@@ -1,0 +1,37 @@
+{
+  "kind": "standalone-tool",
+  "packageId": "video-hook-merger",
+  "version": "1.4.0",
+  "title": "Video Hook Merger",
+  "description": "Ghép 3 clip dọc thành 1 video: cắt khoảng lặng/jump cut, tăng tốc hình + giọng và đồng bộ tốc độ nói giữa các clip (Whisper), tự thiết kế hook text 2 dòng tiếng Việt nằm sau người mẫu (tách nền RVM), xuất ảnh cover.",
+  "installEntrypoint": "install.sh",
+  "cliEntrypoint": "bin/hook-merge",
+  "agentSkill": "SKILL.md",
+  "windowsEntrypoints": {
+    "setup": "../Setup.bat",
+    "gui": "../Video Hook Merger.bat (app/gui.py)",
+    "cli": "bin/hook-merge.bat"
+  },
+  "requires": {
+    "python": ">=3.9",
+    "pip": [
+      "pillow>=10.0",
+      "numpy>=1.24",
+      "fonttools>=4.40",
+      "faster-whisper>=1.0",
+      "torch"
+    ],
+    "system": [
+      "ffmpeg + ffprobe (libx264, ffv1, aac; filters atempo, alphamerge, tpad)"
+    ],
+    "gpu": "optional NVIDIA GPU (CUDA) for faster matting; CPU works"
+  },
+  "bundled": {
+    "model": "models/rvm_mobilenetv3_fp32.torchscript (Robust Video Matting v1.0.0, GPL-3.0)",
+    "fonts": "fonts/ (Be Vietnam Pro, Playfair Display, Fraunces, Yeseva One: OFL; UTM Bebas, TH Viettay: check license before commercial redistribution)"
+  },
+  "downloadedAtSetup": {
+    "whisper": ".cache/whisper-small (Systran/faster-whisper-small, ~480 MB, MIT)"
+  },
+  "update": "app/updater.py: nút Cập nhật trong app tải nhánh main của repo GitHub trong app/update.json"
+}

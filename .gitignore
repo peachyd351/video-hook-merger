@@ -1,0 +1,9 @@
+# Sinh ra khi cài / chạy, không đưa lên GitHub
+app/.venv/
+app/.cache/
+__pycache__/
+*.pyc
+app/setup.log
+app/.gui_settings.json
+app/.hook_history.json
+app/MANIFEST.sha256

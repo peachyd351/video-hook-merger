@@ -1,0 +1,8 @@
+#!/usr/bin/env sh
+# CLI: hook-merge <thư_mục_clip | clip1 clip2 clip3> [--hook "..."] [--speed 1.2] ...
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+if [ -x "$ROOT/.venv/Scripts/python.exe" ]; then PY="$ROOT/.venv/Scripts/python.exe"
+elif [ -x "$ROOT/.venv/bin/python" ]; then PY="$ROOT/.venv/bin/python"
+else PY="$(command -v python3 || command -v python)"; fi
+export PYTHONIOENCODING=utf-8
+exec "$PY" "$ROOT/hook_merge.py" "$@"

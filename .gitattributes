@@ -1,0 +1,8 @@
+# Kiểu xuống dòng cố định, để bản tải từ GitHub (nút Cập nhật) chạy đúng trên Windows
+* text=auto
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.sh text eol=lf
+app/bin/hook-merge text eol=lf
+*.ttf binary
+*.torchscript binary
