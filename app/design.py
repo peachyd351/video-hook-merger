@@ -35,29 +35,31 @@ class Preset:
     label: str
     line1: FontSpec
     line2: FontSpec
-    use_accent: bool  # dòng 2 được phép lấy màu nhấn từ trang phục
 
 
 # Cỡ chữ đo theo video mẫu "Nàng mặc đẹp" (dòng 1 nhỏ nghiêng mảnh, dòng 2 serif Bold ~75% bề ngang).
 PRESETS = {
     "sang_trong": Preset("sang_trong", "Sang trọng (tiệc, sự kiện)",
                          FontSpec("BeVietnamPro-LightItalic.ttf", 0.058),
-                         FontSpec("PlayfairDisplay.ttf", 0.074, "Bold"), use_accent=False),
+                         FontSpec("PlayfairDisplay.ttf", 0.074, "Bold")),
     "tap_chi": Preset("tap_chi", "Tạp chí (thanh lịch, tối giản sang)",
                       FontSpec("BeVietnamPro-Light.ttf", 0.052),
-                      FontSpec("Fraunces-SemiBoldItalic.ttf", 0.078), use_accent=True),
+                      FontSpec("Fraunces-SemiBoldItalic.ttf", 0.078)),
     "lang_man": Preset("lang_man", "Lãng mạn (hẹn hò, cưới, nữ tính)",
                        FontSpec("TH-Viettay-6.ttf", 0.085),
-                       FontSpec("Fraunces-SemiBold.ttf", 0.072), use_accent=True),
+                       FontSpec("Fraunces-SemiBold.ttf", 0.072)),
     "de_thuong": Preset("de_thuong", "Dễ thương (đi chơi, pastel)",
                         FontSpec("TH-Viettay-6.ttf", 0.085),
-                        FontSpec("YesevaOne-Regular.ttf", 0.070), use_accent=True),
+                        FontSpec("YesevaOne-Regular.ttf", 0.070)),
     "hien_dai": Preset("hien_dai", "Hiện đại (công sở, basic)",
                        FontSpec("BeVietnamPro-Light.ttf", 0.052),
-                       FontSpec("BeVietnamPro-ExtraBold.ttf", 0.066), use_accent=False),
+                       FontSpec("BeVietnamPro-ExtraBold.ttf", 0.066)),
+    "vibe_han": Preset("vibe_han", "Vibe Hàn (trẻ trung, basic)",
+                       FontSpec("BeVietnamPro-LightItalic.ttf", 0.052),
+                       FontSpec("BeVietnamPro-ExtraBold.ttf", 0.064)),
     "ca_tinh": Preset("ca_tinh", "Cá tính (màu nổi, street)",
                       FontSpec("BeVietnamPro-MediumItalic.ttf", 0.052),
-                      FontSpec("UTM Bebas.ttf", 0.112, upper=True), use_accent=True),
+                      FontSpec("UTM Bebas.ttf", 0.112, upper=True)),
 }
 
 KEYWORDS = {
@@ -66,6 +68,7 @@ KEYWORDS = {
     "lang_man": ["hẹn hò", "cưới", "lãng mạn", "ngọt ngào", "nữ tính", "dịu dàng", "valentine", "người yêu", "crush"],
     "de_thuong": ["dễ thương", "cute", "xinh xắn", "đi chơi", "học sinh", "biển", "dã ngoại", "bánh bèo", "trẻ trung"],
     "hien_dai": ["công sở", "đi làm", "văn phòng", "basic", "đơn giản", "hằng ngày", "tối giản", "công thức"],
+    "vibe_han": ["hàn", "hàn quốc", "korea", "ulzzang", "gái hàn", "vibe", "đi học", "học đường", "basic"],
     "ca_tinh": ["cá tính", "street", "năng động", "phá cách", "nổi bật", "chất", "ngầu", "cool", "sporty"],
 }
 
@@ -263,12 +266,13 @@ class Design:
     preset: Preset
     color1: tuple
     color2: tuple
+    accent: tuple  # màu tô cụm từ nhấn trong dòng đậm
     reasons: list
 
     def summary(self) -> str:
         hx = lambda c: "#%02x%02x%02x" % c[:3]
         s = [f"Phong cách: {self.preset.label}",
-             f"Màu dòng 1: {hx(self.color1)}   Màu dòng 2: {hx(self.color2)}"]
+             f"Màu dòng 1: {hx(self.color1)}   Màu dòng 2: {hx(self.color2)}   Màu nhấn: {hx(self.accent)}"]
         return "\n".join(s + [f"  - {r}" for r in self.reasons])
 
 
@@ -304,12 +308,29 @@ def pick_accent(f: Features) -> tuple | None:
     best, best_score = None, 0.0
     for lab, w, ci in f.outfit_colors:
         L, C, h = lch_of(lab)
-        if C < 0.07 or w < 0.03 or L < 0.2:
+        if C < 0.045 or w < 0.03 or L < 0.2:  # nhận cả màu pastel (vd sơ mi xanh nhạt)
             continue
         s = C * np.sqrt(w) * (1.5 if ci == 0 else 1.0)
         if s > best_score:
             best, best_score = (L, C, h), s
     return best
+
+
+# Bảng màu nhấn dự phòng khi trang phục trung tính (OKLCH: L, C, hue)
+ACCENT_PALETTE = [
+    ("xanh thép", 0.50, 0.11, 250), ("hồng đất", 0.55, 0.13, 10), ("đỏ rượu", 0.42, 0.13, 20),
+    ("đất nung", 0.55, 0.13, 45), ("ô liu", 0.50, 0.10, 120), ("xanh két", 0.50, 0.09, 195),
+    ("xanh navy", 0.40, 0.11, 262),
+]
+
+
+def fallback_accent(f: Features, text: str) -> tuple:
+    """Chọn màu trong bảng: ưu tiên màu có sắc độ xa màu nền; câu khác nhau ra màu khác nhau."""
+    def hue_gap(h):
+        d = abs(h - f.bg_h) % 360
+        return min(d, 360 - d)
+    ranked = sorted(ACCENT_PALETTE, key=lambda c: -hue_gap(c[3]))[:3]
+    return ranked[sum(map(ord, text)) % len(ranked)]
 
 
 def solve_color(L: float, C: float, h: float, dark_text: bool, f: Features, target: float = 4.5):
@@ -342,15 +363,22 @@ def choose_design(text: str, f: Features, style: str | None = None) -> Design:
     color1, ok1 = solve_color(L1, tint_c, f.bg_h, dark_text, f)
     color2, ok2 = solve_color(L2, tint_c, f.bg_h, dark_text, f)
 
-    accent = pick_accent(f) if preset.use_accent else None
-    if accent:
-        aL, aC, ah = accent
-        aL = min(aL, 0.5) if dark_text else max(aL, 0.8)
-        acc_rgb, ok = solve_color(aL, min(aC, 0.16), ah, dark_text, f)
-        if ok:
-            color2 = acc_rgb
-            reasons.append("Dòng 2 lấy màu nhấn từ trang phục: #%02x%02x%02x" % acc_rgb)
+    # Màu nhấn cho cụm từ nổi bật: sắc độ lấy từ trang phục (đậm lên cho rõ), không có thì lấy bảng màu.
+    accent_rgb, src = None, None
+    acc = pick_accent(f)
+    if acc:
+        aL, aC, ah = acc
+        src = "trang phục"
+    else:
+        name_, aL, aC, ah = fallback_accent(f, text)
+        src = f"bảng màu ({name_})"
+    aL = min(aL, 0.52) if dark_text else max(aL, 0.82)
+    accent_rgb, ok = solve_color(aL, max(0.10, min(aC * 1.4, 0.17)), ah, dark_text, f, target=3.5)
+    if not ok:  # không đủ tương phản -> tô cùng màu dòng 2
+        accent_rgb, src = color2, None
+    if src:
+        reasons.append(f"Màu nhấn lấy từ {src}: #%02x%02x%02x" % accent_rgb)
 
     if not (ok1 and ok2):
         reasons.append("Nền vùng chữ tương phản thấp: đã đẩy màu chữ tới mức đậm/nhạt nhất")
-    return Design(preset, color1 + (255,), color2 + (255,), reasons)
+    return Design(preset, color1 + (255,), color2 + (255,), accent_rgb + (255,), reasons)

@@ -28,6 +28,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+import threading
 import warnings
 
 import numpy as np
@@ -59,8 +60,30 @@ MIN_SEGMENT = 0.25  # đoạn giữ lại ngắn hơn mức này thì gộp/bỏ
 SYNC_MAX = 0.12  # đồng bộ tốc độ nói: mỗi clip lệch tối đa ±12% so với --speed
 SYNC_DEADBAND = 0.03  # chênh < 3% so với chuẩn thì không chỉnh
 
-# Từ mở vế sau, dùng để tự tách 1 câu thành 2 dòng.
-SPLIT_WORDS = ["thì", "cứ", "chỉ cần", "hãy", "mặc", "chọn", "đây là", "là", "vì", "nhưng", "mà"]
+# Chia dòng hook: câu ngắn thì 1 dòng; dài thì tìm chỗ cắt cân đối + tự nhiên.
+SINGLE_LINE_WORDS = 5
+SINGLE_LINE_CHARS = 22
+SPLIT_STRONG = {"thì", "cứ", "là", "nhưng", "vì", "nên", "mà", "hãy", "chỉ"}  # dòng 2 hay mở bằng các từ này
+SPLIT_WEAK = {"mặc", "diện", "chọn", "phối", "ai", "ảnh", "để", "sẽ", "được", "khiến", "giúp", "dừng"}
+GLUE_NEXT = {"mọi", "những", "các", "một", "của", "cho", "với", "và", "rất", "cực", "siêu", "quá", "đang",
+             "bộ", "chiếc", "cái", "set", "mẫu", "kiểu", "màu", "đi", "đồ", "nàng"}  # không đứng cuối dòng 1
+GLUE_PREV = {"này", "đó", "kia", "nha", "nhé", "luôn", "ạ", "thôi", "đâu", "không", "chưa"}  # không mở dòng 2
+PARTICLES = {"nha", "nhé", "luôn", "ạ", "thôi", "nhen", "nè", "đó", "ha"}
+# Từ ghép hay gặp trong hook thời trang: không cắt dòng ở giữa (không có bộ tách từ tiếng Việt).
+COMPOUNDS = {
+    "ánh nhìn", "góc nhìn", "tự tin", "dừng lại", "bao giờ", "hết thời", "buổi tiệc", "tối nay", "đi tiệc",
+    "điệu đà", "cuối tuần", "hẹn hò", "phối đồ", "set đồ", "mùa đông", "mùa hè", "mùa thu", "gái hàn", "tiểu thư",
+    "nổi bật", "sang trọng", "sang chảnh", "thanh lịch", "nữ tính", "cá tính", "dễ thương", "công sở", "bạn thân",
+    "đám cưới", "xinh đẹp", "mặc đẹp", "tôn dáng", "hack dáng", "chân váy", "sơ mi", "vài giây", "mọi người",
+    "thế nào", "bao nhiêu", "như thế", "đến thế", "đi làm", "đi chơi", "đi học", "nguyên set", "cả ngày",
+    "hôm nay", "ngày mai", "trẻ trung", "năng động", "quý phái", "dịu dàng", "ngọt ngào", "cuốn hút", "thu hút",
+    "không biết", "chưa biết", "mặc gì", "đẹp nhất", "xinh nhất", "cực kỳ", "siêu xinh", "vừa xinh", "lên đồ",
+}
+# Từ khoá thời trang được ưu tiên tô màu nhấn (nếu câu không có cụm Viết Hoa / *đánh dấu*).
+ACCENT_KEYS = ["vibe gái hàn", "gái hàn", "vibe", "tiểu thư", "sang chảnh", "sang trọng", "thanh lịch", "nữ tính",
+               "cá tính", "dễ thương", "nổi bật", "tự tin", "tôn dáng", "hack dáng", "đi tiệc", "hẹn hò", "công sở",
+               "đi làm", "đi chơi", "mùa đông", "mùa hè", "set đồ", "outfit", "spotlight", "xinh xỉu", "mê",
+               "hút mắt", "buổi tiệc", "tiệc", "sang", "xinh", "chuẩn"]
 
 
 def run(cmd: list[str]) -> str:
@@ -95,11 +118,8 @@ def measure_rates(jobs: list[dict]) -> dict:
     """Gọi speech_rate.py trong tiến trình riêng: thử GPU trước, lỗi/sập thì chạy lại bằng CPU."""
     if not jobs:
         return {}
-    try:
-        import torch
-        devices = ["cuda", "cpu"] if torch.cuda.is_available() else ["cpu"]
-    except Exception:
-        devices = ["cpu"]
+    import shutil as _sh
+    devices = ["cuda", "cpu"] if _sh.which("nvidia-smi") else ["cpu"]  # GPU lỗi thì tự thử CPU
     for dev in devices:
         res = subprocess.run([sys.executable, str(HERE / "speech_rate.py"), "--device", dev],
                              input=json.dumps(jobs), capture_output=True, text=True,
@@ -228,29 +248,106 @@ def cap(s: str) -> str:
 
 
 def split_hook(text: str) -> tuple[str, str]:
+    """Chia hook thành (dòng nhỏ, dòng đậm). Câu ngắn -> 1 dòng: ("", câu)."""
     a, b = _split(text)
-    return cap(a.rstrip(" ,:;–—-")), cap(b.lstrip(" ,:;–—-"))
+    if not a:
+        return "", cap(b)
+    # chỉ viết hoa đầu câu; dòng 2 là nửa sau của câu nên giữ nguyên cách viết (vd "ảnh nào cũng ra…")
+    return cap(a.rstrip(" ,:;–—-")), b.lstrip(" ,:;–—-")
+
+
+def _plain(t: str) -> str:
+    return t.replace("*", "")
 
 
 def _split(text: str) -> tuple[str, str]:
     text = dz.clean_text(text)
-    if "|" in text:
+    if "|" in text:  # người dùng tự chia
         a, b = text.split("|", 1)
         return a.strip(), b.strip()
-    for sep in [",", " – ", " — ", " - ", ":", "…", "..."]:
-        if sep in text:
-            a, b = text.split(sep, 1)
-            if a.strip() and b.strip():
-                return a.strip(), b.strip()
     words = text.split()
-    low = [w.lower() for w in words]
-    for kw in SPLIT_WORDS:
-        k = kw.split()
-        for i in range(2, len(words) - 1):
-            if low[i:i + len(k)] == k:
-                return " ".join(words[:i]), " ".join(words[i:])
-    cut = max(1, round(len(words) * 0.5))
-    return " ".join(words[:cut]), " ".join(words[cut:])
+    if len(words) <= SINGLE_LINE_WORDS or len(_plain(text)) <= SINGLE_LINE_CHARS:
+        return "", text  # câu ngắn: 1 dòng đậm
+    low = [re.sub(r"[^\w]", "", w.lower()) for w in words]
+    total = len(_plain(text))
+    in_marker, marked = False, []  # từ nằm trong *...* (không cắt ở giữa)
+    for wd in words:
+        starts = wd.startswith("*")
+        in_marker = in_marker or starts
+        marked.append(in_marker)
+        if wd.endswith("*") and (len(wd) > 1 or not starts):
+            in_marker = False
+    best, best_i = None, len(words) // 2
+    for i in range(2, len(words) - 1):  # mỗi dòng ít nhất 2 chữ
+        la, lb = len(_plain(" ".join(words[:i]))), len(_plain(" ".join(words[i:])))
+        score = abs(la - lb) / total  # càng cân càng tốt
+        if words[i - 1][-1] in ",.:;!?…":
+            score -= 0.25  # cắt ngay sau dấu câu
+        if low[i] in SPLIT_STRONG:
+            score -= 0.20  # dòng 2 mở bằng từ nối: "thì", "cứ", ...
+        elif low[i] in SPLIT_WEAK:
+            score -= 0.06
+        if low[i - 1] in GLUE_NEXT:
+            score += 0.30  # "mọi | ánh nhìn" -> xấu
+        if low[i] in GLUE_PREV:
+            score += 0.30  # "mẫu | này" -> xấu
+        if f"{low[i - 1]} {low[i]}" in COMPOUNDS:
+            score += 0.35  # không cắt giữa từ ghép: "ánh | nhìn", "tự | tin"
+        if marked[i] and marked[i - 1]:
+            score += 1.0  # không cắt giữa cụm *...*
+        if words[i][:1].isupper() and words[i - 1][:1].isupper() and i - 1 > 0:
+            score += 1.0  # không cắt giữa cụm viết hoa ("Vibe Gái Hàn")
+        if best is None or score < best:
+            best, best_i = score, i
+    return " ".join(words[:best_i]), " ".join(words[best_i:])
+
+
+def accent_runs(line: str) -> list[tuple[str, bool]]:
+    """Tách dòng đậm thành các đoạn (chữ, có tô màu nhấn không).
+    Ưu tiên: *đánh dấu* > cụm Viết Hoa giữa câu > từ khoá thời trang > 2 chữ cuối."""
+    if "*" in line:
+        parts = line.split("*")
+        runs = [(t, k % 2 == 1) for k, t in enumerate(parts) if t]
+        return runs if any(r[1] for r in runs) else [(line.replace("*", ""), False)]
+    words = line.split()
+    if len(words) < 2:
+        return [(line, False)]
+    key = [re.sub(r"[^\w]", "", w.lower()) for w in words]
+    span = None
+    run = [k for k in range(1, len(words)) if words[k][:1].isupper()]
+    if run:  # cụm viết hoa dài nhất (không tính chữ đầu câu)
+        groups, cur = [], [run[0]]
+        for k in run[1:]:
+            if k == cur[-1] + 1:
+                cur.append(k)
+            else:
+                groups.append(cur)
+                cur = [k]
+        groups.append(cur)
+        g = max(groups, key=len)
+        span = (g[0], g[-1] + 1)
+    if span is None:
+        for phrase in sorted(ACCENT_KEYS, key=lambda x: -len(x.split())):
+            pk = phrase.split()
+            for k in range(len(key) - len(pk) + 1):
+                if key[k:k + len(pk)] == pk:
+                    span = (k, k + len(pk))
+                    break
+            if span:
+                break
+    if span is None:  # 2 chữ cuối, bỏ qua từ đệm cuối câu ("nha", "nhé", "luôn"...)
+        end = len(words)
+        while end > 1 and key[end - 1] in PARTICLES:
+            end -= 1
+        span = (max(0, end - 2), end)
+    i, j = span
+    runs = []
+    if i:
+        runs.append((" ".join(words[:i]) + " ", False))
+    runs.append((" ".join(words[i:j]), True))
+    if j < len(words):
+        runs.append((" " + " ".join(words[j:]), False))
+    return runs
 
 
 def load_bank() -> list[str]:
@@ -315,35 +412,59 @@ def load_font(spec: dz.FontSpec, size: int, text: str, max_w: int) -> ImageFont.
 def render_overlay(line1: str, line2: str, w: int, h: int, out: Path,
                    head_top: int | None, safe_top: float, design: dz.Design,
                    scale: float = 1.0) -> None:
-    """Vẽ 2 dòng chữ ở cỡ `scale` (1.0 = lớn nhất theo preset).
+    """Vẽ hook: dòng nhỏ (line1, có thể rỗng -> chỉ 1 dòng) + dòng đậm (line2) có cụm tô màu nhấn.
 
     Vùng an toàn luôn được ưu tiên: khối chữ không bao giờ lên trên vạch safe_top
     (tai thỏ / Dynamic Island / thanh tiêu đề Reels). Vừa khoảng trống trên đầu thì căn giữa
     khoảng đó; không vừa thì bám sát vạch an toàn (phần dưới khối chữ chạm tới đầu người mẫu).
     """
     p = design.preset
-    spec1, line1, n1 = dz.glyph_safe(p.line1, line1.upper() if p.line1.upper else line1)
-    spec2, line2, n2 = dz.glyph_safe(p.line2, line2.upper() if p.line2.upper else line2)
-    for note in n1 + n2:
-        print(f"[font] {note}")
+    max_w = int(w * MAX_TEXT_W)
+
+    def prep(spec, text):  # font thật sự dùng (dự phòng nếu thiếu glyph) + các đoạn chữ đã an toàn
+        runs = accent_runs(text) if spec is p.line2 else [(text.replace("*", ""), False)]
+        if spec.upper:
+            runs = [(r.upper(), acc) for r, acc in runs]
+        real, _, notes = dz.glyph_safe(spec, "".join(r for r, _ in runs))
+        for note in notes:
+            print(f"[font] {note}")
+        runs = [(dz.glyph_safe(real, r)[1] if r.strip() else r, acc) for r, acc in runs]
+        font = load_font(real, round(w * real.size * scale), "".join(r for r, _ in runs), max_w)
+        return font, runs
+
+    lines = []  # (font, runs, màu thường)
+    if line1.strip():
+        lines.append((*prep(p.line1, line1), design.color1))
+    lines.append((*prep(p.line2, line2), design.color2))
+
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    max_w = int(w * MAX_TEXT_W)
+    # vị trí tâm từng dòng (dòng đầu tại 0), khoảng cách tâm >= 1.25 line-height
+    centers = [0]
+    for (fa, _, _), (fb, _, _) in zip(lines, lines[1:]):
+        centers.append(centers[-1] + round((fa.size + fb.size) / 2 * LINE_GAP))
+    tops, bots = [], []
+    for (font, runs, _), cy in zip(lines, centers):
+        box = draw.textbbox((w / 2, cy), "".join(r for r, _ in runs), font=font, anchor="mm")
+        tops.append(box[1])
+        bots.append(box[3])
+    block_top, block_bot = min(tops), max(bots)
     safe_px = round(h * safe_top)
-    room = (head_top - safe_px) if head_top else None
-    f1 = load_font(spec1, round(w * spec1.size * scale), line1, max_w)
-    f2 = load_font(spec2, round(w * spec2.size * scale), line2, max_w)
-    gap = round((f1.size + f2.size) / 2 * LINE_GAP)
-    block_top = draw.textbbox((w / 2, 0), line1, font=f1, anchor="mm")[1]
-    block_bot = draw.textbbox((w / 2, gap), line2, font=f2, anchor="mm")[3]
-    if room is None:
-        y1 = safe_px - block_top  # không thấy người: bám vạch an toàn
+    if head_top is None or head_top - safe_px <= 0:
+        y0 = safe_px - block_top  # không thấy người: bám vạch an toàn
     else:
-        y1 = round((safe_px + head_top) / 2 - (block_top + block_bot) / 2)
-    y1 = max(y1, safe_px - block_top)
+        y0 = round((safe_px + head_top) / 2 - (block_top + block_bot) / 2)
+    y0 = max(y0, safe_px - block_top)
 
-    draw.text((w / 2, y1), line1, font=f1, fill=design.color1, anchor="mm")
-    draw.text((w / 2, y1 + gap), line2, font=f2, fill=design.color2, anchor="mm")
+    for (font, runs, color), cy in zip(lines, centers):
+        text = "".join(r for r, _ in runs)
+        width = font.getlength(text)
+        ascent, descent = font.getmetrics()
+        baseline = y0 + cy + (ascent - descent) / 2  # cùng đường chân chữ với anchor "mm"
+        x = w / 2 - width / 2
+        for r, acc in runs:  # vẽ từng đoạn trên cùng 1 đường chân chữ, đoạn nhấn đổi màu
+            draw.text((x, baseline), r, font=font, fill=design.accent if acc else color, anchor="ls")
+            x += font.getlength(r)
     img.save(out)
 
 
@@ -394,7 +515,7 @@ def render_base(clips: list[Path], infos: list[dict], w: int, h: int, fps: int, 
             n += 1
     parts.append(f"{concat_in}concat=n={n}:v=1:a=1[vc][ac]")
     ffmpeg(*inputs, "-filter_complex", ";".join(parts), "-map", "[vc]", "-map", "[ac]",
-           "-c:v", "libx264", "-preset", "veryfast", "-crf", "10", "-pix_fmt", "yuv420p",
+           "-c:v", "libx264", "-preset", "ultrafast", "-crf", "10", "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "256k", str(out))
 
 
@@ -407,11 +528,37 @@ def load_rvm():
     return torch.jit.load(str(RVM_MODEL), map_location=device).eval(), device
 
 
-def grab_frame(video: Path, t: float, aw: int, ah: int) -> np.ndarray:
-    raw = subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t:.3f}", "-i", str(video), "-frames:v", "1",
-                          "-vf", f"scale={aw}:{ah}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
-                         capture_output=True, check=True).stdout
-    return np.frombuffer(raw, np.uint8).reshape(ah, aw, 3)
+def matte_size(w: int, h: int, device: str) -> tuple[int, int]:
+    mw = min(w, 1080 if device == "cuda" else 720) // 2 * 2  # CPU: giảm độ phân giải cho nhanh
+    return mw, round(h * mw / w) // 2 * 2
+
+
+def warm_up_rvm(rvm, w: int, h: int, runs: int = 5) -> None:
+    """Chạy vài frame giả đúng kích thước thật để TorchScript tối ưu xong trước khi tách nền."""
+    import torch
+
+    model, device = rvm
+    mw, mh = matte_size(w, h, device)
+    x = torch.zeros(1, 3, mh, mw, device=device)
+    rec = [None] * 4
+    with torch.no_grad():
+        for _ in range(runs):
+            _fgr, _pha, *rec = model(x, *rec, min(1.0, 512 / max(mw, mh)))
+    if device == "cuda":
+        torch.cuda.synchronize()
+
+
+def grab_frames(video: Path, frame_ids: list[int], aw: int, ah: int) -> dict[int, np.ndarray]:
+    """Lấy nhiều frame (theo số thứ tự) chỉ với 1 lần giải mã video."""
+    ids = sorted(set(frame_ids))
+    sel = "+".join(f"eq(n\\,{i})" for i in ids)
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(video), "-an",
+                          "-vf", f"select='{sel}',scale={aw}:{ah}", "-fps_mode", "passthrough",
+                          "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True, check=True).stdout
+    size = aw * ah * 3
+    frames = [np.frombuffer(raw[k * size:(k + 1) * size], np.uint8).reshape(ah, aw, 3)
+              for k in range(len(raw) // size)]
+    return dict(zip(ids, frames))
 
 
 def person_mask(rvm, rgb: np.ndarray) -> np.ndarray:
@@ -429,13 +576,17 @@ def analyze_clips(rvm, base: Path, infos: list[dict], fps: int, w: int, h: int,
     """Lấy mẫu khung hình từng clip: màu trang phục (người) + màu nền vùng đặt chữ (clip 1)."""
     aw = 360
     ah = round(h * aw / w) // 2 * 2
-    starts = np.cumsum([0.0] + [i["frames"] / fps for i in infos])
+    starts = np.cumsum([0] + [i["frames"] for i in infos])
+    picks = {ci: [int(starts[ci] + info["frames"] * f) for f in (0.25, 0.5, 0.75)] for ci, info in enumerate(infos)}
+    band_ids = [min(int(fps * 0.05), max(0, int(infos[0]["frames"]) - 1)), int(hook_dur * 0.5 * fps)]
+    frames = grab_frames(base, [i for ids in picks.values() for i in ids] + band_ids, aw, ah)
     outfit_px = []
     for ci, info in enumerate(infos):
-        dur = info["frames"] / fps
         px = []
-        for frac in (0.25, 0.5, 0.75):
-            rgb = grab_frame(base, starts[ci] + dur * frac, aw, ah)
+        for fid in picks[ci]:
+            if fid not in frames:
+                continue
+            rgb = frames[fid]
             m = person_mask(rvm, rgb) > 0.6
             rows = np.nonzero(m.any(axis=1))[0]
             if len(rows) < 10:
@@ -450,8 +601,10 @@ def analyze_clips(rvm, base: Path, infos: list[dict], fps: int, w: int, h: int,
     y1 = round(head_top * ah / h) if head_top else y0 + round(ah * 0.12)
     y1 = max(y1, y0 + 8)
     band = []
-    for t in (0.05, hook_dur * 0.5):
-        rgb = grab_frame(base, t, aw, ah)
+    for fid in band_ids:
+        if fid not in frames:
+            continue
+        rgb = frames[fid]
         bg = person_mask(rvm, rgb) < 0.3
         band.append(rgb[y0:y1][bg[y0:y1]])
     return dz.analyze(outfit_px, np.concatenate(band))
@@ -459,50 +612,68 @@ def analyze_clips(rvm, base: Path, infos: list[dict], fps: int, w: int, h: int,
 
 def matte_video(rvm, base: Path, w: int, h: int, fps: int, nframes: int,
                 alpha_out: Path) -> tuple[int | None, int, np.ndarray | None]:
-    """Tách người bằng Robust Video Matting cho nframes đầu, ghi alpha ra video xám.
+    """Tách người bằng Robust Video Matting cho nframes đầu, ghi alpha (xám 8-bit, thô) ra alpha_out.
     Trả về (đỉnh đầu theo khung w x h, số frame alpha đã ghi, alpha frame đầu tiên = thumbnail)."""
     import torch
 
     model, device = rvm
-    mw = min(w, 1080 if device == "cuda" else 720) // 2 * 2  # CPU: giảm độ phân giải cho nhanh
-    mh = round(h * mw / w) // 2 * 2
+    mw, mh = matte_size(w, h, device)
     ratio = min(1.0, 512 / max(mw, mh))
+
+    import queue
+    import threading
 
     reader = subprocess.Popen(["ffmpeg", "-v", "error", "-i", str(base), "-frames:v", str(nframes),
                                "-vf", f"scale={mw}:{mh}", "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
-                              stdout=subprocess.PIPE)
-    writer = subprocess.Popen(["ffmpeg", "-y", "-v", "error", "-f", "rawvideo", "-pix_fmt", "gray",
-                               "-s", f"{mw}x{mh}", "-r", str(fps), "-i", "-", "-c:v", "ffv1", str(alpha_out)],
-                              stdin=subprocess.PIPE)
-    rec = [None] * 4
-    written = 0
-    first_alpha = None
-    tops = []
+                              stdout=subprocess.PIPE, bufsize=mw * mh * 3 * 4)  # đệm lớn: đọc 1 frame/lần
+    writer = open(alpha_out, "wb", buffering=mw * mh * 4)  # ghi thô, không nén: nhanh hơn ffv1
     frame_bytes = mw * mh * 3
     probe_frames = max(1, round(fps * 0.2))  # đo đỉnh đầu trong 0.2s đầu
-    with torch.no_grad():
-        for idx in range(nframes):
+    inq: queue.Queue = queue.Queue(maxsize=8)  # frame đã giải mã, chờ GPU
+    outq: queue.Queue = queue.Queue(maxsize=8)  # alpha trên GPU, chờ ghi ra file
+    state = {"written": 0, "first": None, "tops": []}
+
+    def read_frames():  # CPU giải mã frame tiếp theo trong lúc GPU đang tính frame hiện tại
+        for _ in range(nframes):
             buf = reader.stdout.read(frame_bytes)
             if len(buf) < frame_bytes:
                 break
-            src = torch.from_numpy(np.frombuffer(buf, np.uint8).reshape(mh, mw, 3).copy())
-            src = src.to(device).permute(2, 0, 1)[None].float().div_(255)
-            _fgr, pha, *rec = model(src, *rec, ratio)
-            alpha = pha[0, 0].mul(255).byte().cpu().numpy()
-            writer.stdin.write(alpha.tobytes())
-            written = idx + 1
+            inq.put(torch.from_numpy(np.frombuffer(buf, np.uint8).reshape(mh, mw, 3).copy()).pin_memory()
+                    if device == "cuda" else torch.from_numpy(np.frombuffer(buf, np.uint8).reshape(mh, mw, 3).copy()))
+        inq.put(None)
+
+    def write_alpha():  # chép alpha về CPU + ghi file song song với GPU
+        while (pha := outq.get()) is not None:
+            alpha = pha.cpu().numpy()
+            writer.write(alpha.tobytes())
+            idx = state["written"]
             if idx == 0:
-                first_alpha = alpha
+                state["first"] = alpha
             if idx < probe_frames:
                 rows = np.nonzero((alpha > 128).sum(axis=1) > mw * 0.005)[0]
                 if len(rows):
-                    tops.append(rows[0])
+                    state["tops"].append(rows[0])
+            state["written"] = idx + 1
             print(f"\rTách nền: {idx + 1}/{nframes}", end="", flush=True)
+
+    tr = threading.Thread(target=read_frames, daemon=True)
+    tw = threading.Thread(target=write_alpha, daemon=True)
+    tr.start()
+    tw.start()
+    rec = [None] * 4
+    with torch.no_grad():
+        while (frame := inq.get()) is not None:
+            src = frame.to(device, non_blocking=True).permute(2, 0, 1)[None].float().div_(255)
+            _fgr, pha, *rec = model(src, *rec, ratio)
+            outq.put(pha[0, 0].mul(255).byte())
+    outq.put(None)
+    tw.join()
+    tr.join()
     print()
     reader.stdout.close()
     reader.wait()
-    writer.stdin.close()
-    writer.wait()
+    writer.close()
+    written, first_alpha, tops = state["written"], state["first"], state["tops"]
     return (round(float(np.median(tops)) * h / mh) if tops else None), written, first_alpha
 
 
@@ -519,13 +690,27 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
             msg += (f" (cắt đầu {st['head']:.2f}s, cuối {st['tail']:.2f}s, "
                     f"{st['pauses']} khoảng ngừng {st['pause_s']:.2f}s)")
         print(msg)
-    sync_speeds(clips, infos, args)
     first = infos[0]
     if args.size:
         w, h = (int(v) for v in args.size.lower().split("x"))
     else:
         w, h = first["width"], first["height"]
     w, h = w - w % 2, h - h % 2
+    # Nạp torch + model tách nền và "khởi động" nó song song trong lúc Whisper chạy / ghép clip:
+    # TorchScript mất vài giây tối ưu ở những lần gọi đầu, làm trước thì lúc tách nền thật đã sẵn sàng.
+    rvm_box: dict = {}
+
+    def preload():
+        try:
+            rvm = load_rvm()
+            if args.text_layer != "front":
+                warm_up_rvm(rvm, w, h)
+            rvm_box["rvm"] = rvm
+        except Exception as e:  # báo lỗi khi thật sự cần dùng
+            rvm_box["err"] = e
+    loader = threading.Thread(target=preload, daemon=True)
+    loader.start()
+    sync_speeds(clips, infos, args)
     fps = args.fps or round(first["fps"])
     for info in infos:
         info["frames"] = sum(seg_frames(s, e, info["speed"], fps) for s, e in info["segments"])
@@ -538,11 +723,14 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
 
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
-        base, alpha, overlay = tmp / "base.mp4", tmp / "alpha.mkv", tmp / "hook.png"
+        base, alpha, overlay = tmp / "base.mp4", tmp / "alpha.gray", tmp / "hook.png"
         print("1/3 Ghép clip...")
         render_base(clips, infos, w, h, fps, args, base)
 
-        rvm = load_rvm()
+        loader.join()
+        if "err" in rvm_box:
+            raise rvm_box["err"]
+        rvm = rvm_box["rvm"]
         head_top, first_alpha = None, None
         if args.text_layer != "front":
             print("2/3 Tách người khỏi nền...")
@@ -588,6 +776,8 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
             Image.open(overlay).save(out.with_suffix(".hook.png"))
             out.with_suffix(".design.txt").write_text(design.summary(), encoding="utf-8")
 
+        if first_alpha is None:  # không tách được người (vd không có frame) -> chữ nằm trên
+            behind = False
         print("3/3 Xếp lớp: " + ("video gốc -> text -> người đã tách nền..." if behind else "video gốc -> text..."))
         enable = f"enable='lt(t,{hook_dur:.4f})'"
         if not behind:
@@ -598,10 +788,11 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
                   f"[f]trim=end_frame={nframes},setpts=PTS-STARTPTS[ft];"
                   f"[2:v]scale={w}:{h}:flags=bicubic,format=gray[a];"
                   f"[ft][a]alphamerge[fg];[bt][fg]overlay=0:0:eof_action=pass[v]")
-            extra = ["-i", str(alpha)]
+            ah, aw = first_alpha.shape
+            extra = ["-f", "rawvideo", "-pix_fmt", "gray", "-s", f"{aw}x{ah}", "-r", str(fps), "-i", str(alpha)]
         ffmpeg("-i", str(base), "-loop", "1", "-t", f"{hook_dur:.4f}", "-i", str(overlay), *extra,
                "-filter_complex", fc, "-map", "[v]", "-map", "0:a",
-               "-c:v", "libx264", "-preset", "medium", "-crf", str(args.crf), "-pix_fmt", "yuv420p",
+               "-c:v", "libx264", "-preset", "fast", "-crf", str(args.crf), "-pix_fmt", "yuv420p",
                "-c:a", "copy", "-movflags", "+faststart", str(out))
     cover = out.with_suffix(".cover.jpg")
     ffmpeg("-i", str(out), "-frames:v", "1", "-q:v", "2", str(cover))
@@ -674,7 +865,7 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"Ghép {len(clips)} clip:", *[f"  - {c.name}" for c in clips], sep="\n")
-    print(f"Hook: {line1}  /  {line2}")
+    print(f"Hook: {line1}  /  {line2}" if line1 else f"Hook (1 dòng): {line2}")
     build(clips, line1, line2, out, args)
     print(f"Xong: {out}")
 

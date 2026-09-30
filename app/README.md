@@ -58,17 +58,18 @@ Giải nén bản mới, **chép toàn bộ file trong đó đè lên thư mục
   - Giữa câu (jump cut): khoảng ngừng dài hơn 0.45s được rút còn 0.2s.
 - **Tốc độ:** hình và tiếng cắt cùng mốc, tăng tốc cùng hệ số, nên khẩu hình khớp. Giọng giữ nguyên cao độ, không bị the thé. Mỗi đoạn được ép đúng số nguyên frame, nên hình và tiếng không lệch nhau.
 - **Đồng bộ tốc độ nói giữa 3 clip:** Whisper small đếm số chữ trong từng clip. Tiếng Việt mỗi chữ là một âm tiết, nên số chữ chia cho thời gian nói ra đúng tốc độ nói, và nhạc nền không làm sai kết quả. Tool lấy mức giữa của 3 clip làm chuẩn: clip nói chậm được tăng tốc thêm, clip nói nhanh được giảm bớt, quanh mức `--speed` và lệch tối đa ±12%. Chênh dưới 3% thì giữ nguyên. Log in ra số chữ/giây và tốc độ từng clip. Whisper chạy trong tiến trình riêng, GPU trước rồi CPU; máy chỉ có CPU mất thêm khoảng 40 giây mỗi video. Tắt bằng `--no-sync-speed`.
-- **Chữ:** dòng 1 nhỏ, nghiêng, nét mảnh; dòng 2 serif Bold (form video mẫu "Nàng mặc đẹp"). Chữ hiện suốt cảnh đầu, căn giữa khoảng trống từ vạch an toàn (8%, tránh tai thỏ/Dynamic Island) tới đỉnh đầu người mẫu, và nằm **sau** người mẫu nên tóc đè lên chữ.
+- **Chữ:** câu ngắn (≤ 5 chữ) thành 1 dòng đậm; câu dài chia 2 dòng tại chỗ cân đối và tự nhiên (sau dấu câu, trước "thì/cứ/là…", không cắt giữa từ ghép hay cụm Viết Hoa). Dòng 1 nhỏ nghiêng, dòng 2 đậm có **một cụm tô màu nhấn**: `*đánh dấu*` > cụm Viết Hoa giữa câu > từ khoá thời trang > 2 chữ cuối. Màu nhấn lấy từ trang phục (kể cả pastel, đậm lên cho rõ), trang phục trung tính thì lấy bảng màu hợp nền. Chữ hiện suốt cảnh đầu, căn giữa khoảng trống từ vạch an toàn (8%, tránh tai thỏ/Dynamic Island) tới đỉnh đầu người mẫu, và nằm **sau** người mẫu nên tóc đè lên chữ.
 - **Tự thiết kế font + màu** (offline): chấm điểm 6 phong cách theo từ khoá trong câu hook và màu trang phục ở cả 3 clip; màu chữ lấy theo tông nền và đạt tương phản ≥ 4.5:1. Không dùng hiệu ứng: chỉ font, màu, vị trí.
 - **An toàn tiếng Việt:** cả 10 font đều đủ 146 ký tự có dấu. Text được chuẩn hoá NFC; emoji và ký tự vô hình bị bỏ; font thiếu ký tự thì tự đổi sang font dự phòng.
 
-| Phong cách | Dòng 1 | Dòng 2 | Màu dòng 2 lấy từ trang phục |
+| Phong cách | Dòng 1 | Dòng 2 | Cụm tô màu nhấn |
 |---|---|---|---|
-| `sang_trong` | Be Vietnam Pro Light Italic | Playfair Display Bold | không |
+| `sang_trong` | Be Vietnam Pro Light Italic | Playfair Display Bold | có |
 | `tap_chi` | Be Vietnam Pro Light | Fraunces SemiBold Italic | có |
 | `lang_man` | TH Viettay (viết tay) | Fraunces SemiBold | có |
 | `de_thuong` | TH Viettay (viết tay) | Yeseva One | có |
-| `hien_dai` | Be Vietnam Pro Light | Be Vietnam Pro ExtraBold | không |
+| `hien_dai` | Be Vietnam Pro Light | Be Vietnam Pro ExtraBold | có |
+| `vibe_han` | Be Vietnam Pro Light Italic | Be Vietnam Pro ExtraBold | có |
 | `ca_tinh` | Be Vietnam Pro Medium Italic | UTM Bebas (IN HOA) | có |
 
 ## Dòng lệnh
@@ -84,7 +85,7 @@ bin\hook-merge.bat 1.mp4 2.mp4 3.mp4 -o out.mp4 --hook "Hẹn hò cuối tuần 
 | `--speed 1.15` | Tốc độ hình + giọng, từ 0.5 đến 2.0 (`1.1` = tốc độ video mẫu, `1` = giữ nguyên); là mức chung, từng clip lệch tối đa ±12% để nhịp nói đều |
 | `--no-sync-speed` | Không đồng bộ tốc độ nói: cả 3 clip dùng đúng `--speed` |
 | `--ask` | Hỏi hook và tốc độ trong cửa sổ (Video Hook Merger.bat dùng tuỳ chọn này) |
-| `--style` | Ép phong cách: `sang_trong`, `tap_chi`, `lang_man`, `de_thuong`, `hien_dai`, `ca_tinh` |
+| `--style` | Ép phong cách: `sang_trong`, `tap_chi`, `lang_man`, `de_thuong`, `hien_dai`, `vibe_han`, `ca_tinh` |
 | `--hook-dur clip1` | Thời gian hiện chữ: `clip1` = hết cảnh đầu (mặc định), hoặc số giây, vd `4` |
 | `--safe-top 0.08` | Vùng cấm phía trên (tỉ lệ chiều cao) cho tai thỏ / hàng icon Reels |
 | `--text-layer behind` | `behind` (mặc định): chữ sau người mẫu; `auto`: ưu tiên thumbnail đọc trọn chữ; `front`: chữ trước người mẫu |

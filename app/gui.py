@@ -101,8 +101,9 @@ class App(tk.Tk):
         f2.pack(fill="x", **pad)
         self.hook = tk.StringVar()
         ttk.Entry(f2, textvariable=self.hook, font=("Segoe UI", 12)).pack(fill="x", padx=6, pady=(6, 2))
-        ttk.Label(f2, foreground="#666", text="Để trống = tự lấy từ hook.txt / tên file b1… / kho câu mẫu.  "
-                  "Dùng dấu | để tự chia 2 dòng, vd:  Hẹn hò cuối tuần | Diện ngay set này").pack(
+        ttk.Label(f2, foreground="#666", text="Để trống = tự lấy từ hook.txt / tên file b1… / kho câu mẫu.  Câu ngắn tự thành 1 dòng.\n"
+                  "Dấu | để tự chia 2 dòng · *dấu sao* để chọn chữ tô màu, vd:  Hẹn hò cuối tuần | Diện ngay *set này*",
+                  justify="left").pack(
             anchor="w", padx=6, pady=(0, 6))
 
         # --- 3. Tuỳ chọn ---
