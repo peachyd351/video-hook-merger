@@ -45,11 +45,16 @@ def verify_imports() -> None:
     for mod, pipname in (("PIL", "pillow"), ("numpy", "numpy"), ("fontTools", "fonttools"),
                          ("faster_whisper", "faster-whisper"), ("customtkinter", "customtkinter"),
                          ("torch", "torch")):
-        try:
-            __import__(mod)
-            ok = True
-        except Exception:
-            ok = False
+        if mod == "faster_whisper":
+            # kiểm tra ở tiến trình riêng: nạp chung với torch GPU trong 1 tiến trình làm xung đột cuDNN
+            # (app cũng luôn chạy Whisper ở tiến trình riêng)
+            ok = subprocess.run([sys.executable, "-c", "import faster_whisper"], capture_output=True).returncode == 0
+        else:
+            try:
+                __import__(mod)
+                ok = True
+            except Exception:
+                ok = False
         check(ok, f"Thư viện {pipname}", "Chạy lại Setup.bat (hoặc install.sh)")
     try:
         import tkinter  # noqa: F401
