@@ -1,7 +1,7 @@
 {
   "kind": "standalone-tool",
   "packageId": "video-hook-merger",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "title": "Video Hook Merger",
   "description": "Ghép 3 clip dọc thành 1 video: cắt khoảng lặng/jump cut, tăng tốc hình + giọng và đồng bộ tốc độ nói giữa các clip (Whisper), tự thiết kế hook text 2 dòng tiếng Việt nằm sau người mẫu (tách nền RVM), xuất ảnh cover.",
   "installEntrypoint": "install.sh",

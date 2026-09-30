@@ -57,117 +57,237 @@ def save_settings(data: dict) -> None:
         pass
 
 
+# Bảng màu: nền kem nhạt, thẻ trắng, 1 màu nhấn duy nhất
+BG, CARD, BORDER = "#F4F2EF", "#FFFFFF", "#E6E1DB"
+TEXT, MUTED = "#2B2622", "#8C847D"
+ACCENT, ACCENT_DARK, ACCENT_SOFT = "#C2553A", "#A6452D", "#F7E4DD"
+FONT = "Segoe UI"
+PREVIEW_W, PREVIEW_H = 200, 356  # khung xem trước ảnh cover 9:16
+
+
 class App(tk.Tk):
     def __init__(self, initial: list[str]):
+        if os.name == "nt":  # chữ sắc nét trên màn hình có phóng to (DPI)
+            try:
+                import ctypes
+                ctypes.windll.shcore.SetProcessDpiAwareness(1)
+            except Exception:
+                pass
         super().__init__()
-        self.title("Video Hook Merger - Ghép video + chữ hook")
-        self.minsize(760, 640)
+        self.title("Video Hook Merger")
+        self.configure(bg=BG)
+        self.minsize(860, 640)
         self.clips: list[Path] = []
         self.proc: subprocess.Popen | None = None
         self.out_auto = True  # nơi lưu tự đổi theo clip, trừ khi người dùng tự chọn
         self.cover_img = None
         st = load_settings()
+        self._style()
 
-        style = ttk.Style(self)
-        style.configure("Big.TButton", font=("Segoe UI", 12, "bold"), padding=8)
-        style.configure("H.TLabel", font=("Segoe UI", 10, "bold"))
-        pad = {"padx": 10, "pady": 4}
-
-        # --- thanh trên cùng: phiên bản + cập nhật ---
-        top = ttk.Frame(self)
-        top.pack(fill="x", padx=10, pady=(8, 0))
+        # ---------- đầu trang ----------
+        head = tk.Frame(self, bg=BG)
+        head.pack(fill="x", padx=24, pady=(18, 10))
+        tk.Label(head, text="Video Hook Merger", bg=BG, fg=TEXT, font=(FONT, 17, "bold")).pack(side="left")
         try:
             ver = "v" + updater.local_version()
         except Exception:
             ver = ""
-        ttk.Label(top, text=f"Video Hook Merger {ver}", style="H.TLabel").pack(side="left")
-        self.update_btn = ttk.Button(top, text="⟳ Cập nhật", command=self.update_app)
+        tk.Label(head, text=ver, bg=BG, fg=MUTED, font=(FONT, 10)).pack(side="left", padx=(8, 0), pady=(6, 0))
+        self.update_btn = ttk.Button(head, text="⟳  Cập nhật", style="Link.TButton", command=self.update_app)
         self.update_btn.pack(side="right")
 
-        # --- 1. Clip ---
-        f1 = ttk.LabelFrame(self, text=" 1. Chọn clip (ghép theo thứ tự trong danh sách) ")
-        f1.pack(fill="x", **pad)
-        self.listbox = tk.Listbox(f1, height=4, font=("Segoe UI", 10), activestyle="none")
-        self.listbox.grid(row=0, column=0, rowspan=4, sticky="nsew", padx=6, pady=6)
-        f1.columnconfigure(0, weight=1)
-        for r, (txt, cmd) in enumerate([("Thêm clip…", self.add_clips), ("Chọn thư mục…", self.add_folder),
-                                        ("▲ Lên", lambda: self.move(-1)), ("▼ Xuống", lambda: self.move(1))]):
-            ttk.Button(f1, text=txt, command=cmd, width=14).grid(row=r, column=1, padx=6, pady=2, sticky="ew")
-        ttk.Button(f1, text="Xoá", command=self.remove, width=14).grid(row=0, column=2, padx=(0, 6), pady=2)
-        ttk.Button(f1, text="Xoá hết", command=self.clear, width=14).grid(row=1, column=2, padx=(0, 6), pady=2)
+        body = tk.Frame(self, bg=BG)
+        body.pack(fill="both", expand=True, padx=24, pady=(0, 20))
+        body.columnconfigure(0, weight=1)
+        body.rowconfigure(0, weight=1)
+        left = tk.Frame(body, bg=BG)
+        left.grid(row=0, column=0, sticky="nsew")
+        right = tk.Frame(body, bg=BG)
+        right.grid(row=0, column=1, sticky="ns", padx=(18, 0))
 
-        # --- 2. Hook ---
-        f2 = ttk.LabelFrame(self, text=" 2. Câu hook ")
-        f2.pack(fill="x", **pad)
+        # ---------- 1. Clip ----------
+        c1 = self._card(left, "1", "Clip", "ghép theo thứ tự")
+        acts = tk.Frame(c1.head, bg=CARD)
+        acts.pack(side="right")
+        ttk.Button(acts, text="+ Thêm clip", style="Soft.TButton", command=self.add_clips).pack(side="left")
+        ttk.Button(acts, text="Thư mục…", style="CardLink.TButton", command=self.add_folder).pack(side="left", padx=(6, 0))
+        self.listbox = tk.Listbox(c1.body, height=3, font=(FONT, 10), activestyle="none", bd=0, relief="flat",
+                                  highlightthickness=0, bg="#FAF8F6", fg=TEXT, selectbackground=ACCENT_SOFT,
+                                  selectforeground=TEXT)
+        self.listbox.pack(fill="x", ipady=4)
+        tools = tk.Frame(c1.body, bg=CARD)
+        tools.pack(fill="x", pady=(6, 0))
+        for txt, cmd in (("▲ Lên", lambda: self.move(-1)), ("▼ Xuống", lambda: self.move(1)),
+                         ("✕ Xoá", self.remove), ("Xoá hết", self.clear)):
+            ttk.Button(tools, text=txt, style="Mini.TButton", command=cmd).pack(side="left", padx=(0, 4))
+
+        # ---------- 2. Hook ----------
+        c2 = self._card(left, "2", "Câu hook")
         self.hook = tk.StringVar()
-        ttk.Entry(f2, textvariable=self.hook, font=("Segoe UI", 12)).pack(fill="x", padx=6, pady=(6, 2))
-        ttk.Label(f2, foreground="#666", text="Để trống = tự lấy từ hook.txt / tên file b1… / kho câu mẫu.  Câu ngắn tự thành 1 dòng.\n"
-                  "Dấu | để tự chia 2 dòng · *dấu sao* để chọn chữ tô màu, vd:  Hẹn hò cuối tuần | Diện ngay *set này*",
-                  justify="left").pack(
-            anchor="w", padx=6, pady=(0, 6))
+        ttk.Entry(c2.body, textvariable=self.hook, font=(FONT, 12), style="Big.TEntry").pack(fill="x", ipady=3)
+        tk.Label(c2.body, bg=CARD, fg=MUTED, font=(FONT, 9), anchor="w", justify="left",
+                 text="Để trống: tự lấy từ tên file b1…   ·   dấu | để chia dòng   ·   *chữ* để tô màu").pack(
+            fill="x", pady=(6, 0))
 
-        # --- 3. Tuỳ chọn ---
-        f3 = ttk.LabelFrame(self, text=" 3. Tuỳ chọn ")
-        f3.pack(fill="x", **pad)
-        ttk.Label(f3, text="Tốc độ:").grid(row=0, column=0, sticky="w", padx=6, pady=4)
+        # ---------- 3. Tuỳ chọn ----------
+        c3 = self._card(left, "3", "Tuỳ chọn")
+        row = tk.Frame(c3.body, bg=CARD)
+        row.pack(fill="x")
+        tk.Label(row, text="Tốc độ", bg=CARD, fg=TEXT, font=(FONT, 10)).pack(side="left")
         self.speed = tk.StringVar(value=str(st.get("speed", "1.15")))
-        ttk.Spinbox(f3, from_=0.5, to=2.0, increment=0.05, textvariable=self.speed, width=7,
-                    font=("Segoe UI", 11)).grid(row=0, column=1, sticky="w")
-        ttk.Label(f3, foreground="#666", text="1.0 = giữ nguyên · 1.1 = như video mẫu · 1.15 = mặc định").grid(
-            row=0, column=2, columnspan=2, sticky="w", padx=6)
+        ttk.Spinbox(row, from_=0.5, to=2.0, increment=0.05, textvariable=self.speed, width=5,
+                    font=(FONT, 10)).pack(side="left", padx=(8, 18))
+        tk.Label(row, text="Phong cách chữ", bg=CARD, fg=TEXT, font=(FONT, 10)).pack(side="left")
+        self.style_var = tk.StringVar(value=st.get("style", STYLE_AUTO) if st.get("style") in STYLES else STYLE_AUTO)
+        ttk.Combobox(row, textvariable=self.style_var, values=list(STYLES), state="readonly",
+                     width=30, font=(FONT, 10)).pack(side="left", padx=(8, 0), fill="x", expand=True)
+        row2 = tk.Frame(c3.body, bg=CARD)
+        row2.pack(fill="x", pady=(10, 0))
         self.sync = tk.BooleanVar(value=st.get("sync", True))
         self.trim = tk.BooleanVar(value=st.get("trim", True))
-        ttk.Checkbutton(f3, text="Đồng bộ tốc độ nói giữa các clip", variable=self.sync).grid(
-            row=1, column=0, columnspan=2, sticky="w", padx=6, pady=2)
-        ttk.Checkbutton(f3, text="Cắt khoảng lặng + jump cut", variable=self.trim).grid(
-            row=1, column=2, columnspan=2, sticky="w", padx=6, pady=2)
-        ttk.Label(f3, text="Phong cách chữ:").grid(row=2, column=0, sticky="w", padx=6, pady=4)
-        self.style_var = tk.StringVar(value=st.get("style", STYLE_AUTO) if st.get("style") in STYLES else STYLE_AUTO)
-        ttk.Combobox(f3, textvariable=self.style_var, values=list(STYLES), state="readonly", width=38).grid(
-            row=2, column=1, columnspan=2, sticky="w")
-        ttk.Label(f3, text="Hiện chữ:").grid(row=3, column=0, sticky="w", padx=6, pady=(4, 8))
+        self._toggle(row2, "Đồng bộ tốc độ nói", self.sync).pack(side="left")
+        self._toggle(row2, "Cắt khoảng lặng", self.trim).pack(side="left", padx=(20, 0))
+        self.adv_btn = ttk.Button(row2, text="Nâng cao ▸", style="CardLink.TButton", command=self.toggle_advanced)
+        self.adv_btn.pack(side="right")
+        # phần nâng cao (ẩn mặc định)
+        self.adv = tk.Frame(c3.body, bg=CARD)
+        a1 = tk.Frame(self.adv, bg=CARD)
+        a1.pack(fill="x", pady=(10, 0))
+        tk.Label(a1, text="Hiện chữ", bg=CARD, fg=TEXT, font=(FONT, 10), width=8, anchor="w").pack(side="left")
         self.dur = tk.StringVar(value=st.get("dur", "Hết cảnh đầu") if st.get("dur") in HOOK_DUR else "Hết cảnh đầu")
-        ttk.Combobox(f3, textvariable=self.dur, values=list(HOOK_DUR), state="readonly", width=16).grid(
-            row=3, column=1, columnspan=2, sticky="w", pady=(4, 8))
-
-        # --- 4. Lưu ---
-        f4 = ttk.LabelFrame(self, text=" 4. Lưu video vào ")
-        f4.pack(fill="x", **pad)
+        ttk.Combobox(a1, textvariable=self.dur, values=list(HOOK_DUR), state="readonly", width=14,
+                     font=(FONT, 10)).pack(side="left")
+        a2 = tk.Frame(self.adv, bg=CARD)
+        a2.pack(fill="x", pady=(8, 0))
+        tk.Label(a2, text="Lưu vào", bg=CARD, fg=TEXT, font=(FONT, 10), width=8, anchor="w").pack(side="left")
         self.out = tk.StringVar()
-        ttk.Entry(f4, textvariable=self.out, font=("Segoe UI", 10)).pack(side="left", fill="x", expand=True,
-                                                                        padx=6, pady=6)
-        ttk.Button(f4, text="Chọn…", command=self.pick_out).pack(side="left", padx=6)
+        ttk.Entry(a2, textvariable=self.out, font=(FONT, 9)).pack(side="left", fill="x", expand=True)
+        ttk.Button(a2, text="Đổi…", style="CardLink.TButton", command=self.pick_out).pack(side="left", padx=(6, 0))
 
-        # --- 5. Chạy + kết quả ---
-        f5 = ttk.Frame(self)
-        f5.pack(fill="both", expand=True, **pad)
-        left = ttk.Frame(f5)
-        left.pack(side="left", fill="both", expand=True)
-        row = ttk.Frame(left)
-        row.pack(fill="x")
-        self.run_btn = ttk.Button(row, text="▶  GHÉP VIDEO", style="Big.TButton", command=self.start)
-        self.run_btn.pack(side="left")
-        self.cancel_btn = ttk.Button(row, text="Huỷ", command=self.cancel, state="disabled")
-        self.cancel_btn.pack(side="left", padx=8)
-        self.status = ttk.Label(left, text="Chọn clip rồi bấm GHÉP VIDEO.", style="H.TLabel")
-        self.status.pack(anchor="w", pady=(8, 2))
-        self.bar = ttk.Progressbar(left, maximum=100)
-        self.bar.pack(fill="x")
-        self.log = tk.Text(left, height=9, font=("Consolas", 9), wrap="word", state="disabled", bg="#f7f7f7")
-        self.log.pack(fill="both", expand=True, pady=(6, 0))
-        right = ttk.Frame(f5, width=190)
-        right.pack(side="left", fill="y", padx=(10, 0))
-        self.cover = ttk.Label(right, text="Ảnh cover\nsẽ hiện ở đây", anchor="center", justify="center",
-                               relief="groove", width=24)
+        # ---------- chạy ----------
+        run = tk.Frame(left, bg=BG)
+        run.pack(fill="x", pady=(4, 0))
+        top_run = tk.Frame(run, bg=BG)
+        top_run.pack(fill="x")
+        self.run_btn = ttk.Button(top_run, text="▶   Ghép video", style="Primary.TButton", command=self.start)
+        self.run_btn.pack(side="left", fill="x", expand=True)
+        self.cancel_btn = ttk.Button(top_run, text="Huỷ", style="Link.TButton", command=self.cancel)
+        self.bar = ttk.Progressbar(run, maximum=100, style="Accent.Horizontal.TProgressbar")
+        srow = tk.Frame(run, bg=BG)
+        srow.pack(fill="x", pady=(8, 0))
+        self.srow = srow
+        self.status = tk.Label(srow, text="Chọn clip rồi bấm Ghép video.", bg=BG, fg=MUTED, font=(FONT, 10),
+                               anchor="w")
+        self.status.pack(side="left", fill="x", expand=True)
+        self.log_btn = ttk.Button(srow, text="Chi tiết ▸", style="Link.TButton", command=self.toggle_log)
+        self.log_btn.pack(side="right")
+        self.log = tk.Text(run, height=8, font=("Consolas", 9), wrap="word", state="disabled", bd=0,
+                           bg="#FAF8F6", fg="#4A433E", highlightthickness=1, highlightbackground=BORDER,
+                           padx=8, pady=6)
+
+        # ---------- kết quả (cột phải) ----------
+        pc = tk.Frame(right, bg=CARD, highlightthickness=1, highlightbackground=BORDER)
+        pc.pack(fill="y", expand=True)
+        tk.Label(pc, text="Kết quả", bg=CARD, fg=TEXT, font=(FONT, 11, "bold"), anchor="w").pack(
+            fill="x", padx=16, pady=(14, 8))
+        box = tk.Frame(pc, bg="#F1EEEA", width=PREVIEW_W, height=PREVIEW_H)
+        box.pack(padx=16)
+        box.pack_propagate(False)
+        self.cover = tk.Label(box, text="Ảnh cover\nsẽ hiện ở đây", bg="#F1EEEA", fg=MUTED, font=(FONT, 10),
+                              justify="center")
         self.cover.pack(fill="both", expand=True)
-        self.open_btn = ttk.Button(right, text="Mở video", command=self.open_video, state="disabled")
-        self.open_btn.pack(fill="x", pady=(6, 2))
-        self.folder_btn = ttk.Button(right, text="Mở thư mục", command=self.open_folder, state="disabled")
-        self.folder_btn.pack(fill="x")
+        self.result_btns = tk.Frame(pc, bg=CARD)
+        self.result_btns.pack(fill="x", padx=16, pady=(12, 16))
+        self.open_btn = ttk.Button(self.result_btns, text="Mở video", style="Soft.TButton", command=self.open_video,
+                                   state="disabled")
+        self.open_btn.pack(fill="x")
+        self.folder_btn = ttk.Button(self.result_btns, text="Mở thư mục", style="CardLink.TButton",
+                                     command=self.open_folder, state="disabled")
+        self.folder_btn.pack(fill="x", pady=(4, 0))
 
         self.protocol("WM_DELETE_WINDOW", self.on_close)
+        self.refresh()
         if initial:
             self.add_paths([Path(p) for p in initial])
+
+    # ---------- giao diện ----------
+    def _style(self) -> None:
+        st = ttk.Style(self)
+        st.theme_use("clam")
+        st.configure(".", background=CARD, foreground=TEXT, font=(FONT, 10), bordercolor=BORDER,
+                     lightcolor=BORDER, darkcolor=BORDER, focuscolor=ACCENT_SOFT)
+        st.configure("Primary.TButton", background=ACCENT, foreground="white", font=(FONT, 12, "bold"),
+                     padding=(16, 12), borderwidth=0)
+        st.map("Primary.TButton", background=[("disabled", "#D9B3A8"), ("active", ACCENT_DARK)],
+               foreground=[("disabled", "white")])
+        st.configure("Soft.TButton", background=ACCENT_SOFT, foreground=ACCENT_DARK, font=(FONT, 10, "bold"),
+                     padding=(12, 6), borderwidth=0)
+        st.map("Soft.TButton", background=[("disabled", "#F1EEEA"), ("active", "#F0D3C8")],
+               foreground=[("disabled", MUTED)])
+        for name, bg in (("Link.TButton", BG), ("CardLink.TButton", CARD)):
+            st.configure(name, background=bg, foreground=ACCENT_DARK, font=(FONT, 10), padding=(6, 4),
+                         borderwidth=0)
+            st.map(name, background=[("active", ACCENT_SOFT)], foreground=[("disabled", MUTED)])
+        st.configure("Mini.TButton", background=CARD, foreground=MUTED, font=(FONT, 9), padding=(8, 3),
+                     borderwidth=1, bordercolor=BORDER)
+        st.map("Mini.TButton", background=[("active", "#F4F1ED")], foreground=[("active", TEXT)])
+        st.configure("TEntry", fieldbackground="#FFFFFF", padding=6)
+        st.configure("Big.TEntry", padding=(8, 6))
+        st.configure("TCombobox", fieldbackground="#FFFFFF", padding=4, arrowsize=12, background=CARD,
+                     arrowcolor=MUTED)
+        st.map("TCombobox", fieldbackground=[("readonly", "#FFFFFF")], selectbackground=[("readonly", "#FFFFFF")],
+               selectforeground=[("readonly", TEXT)])
+        st.configure("TSpinbox", fieldbackground="#FFFFFF", padding=4, arrowsize=10, background=CARD,
+                     arrowcolor=MUTED)
+        st.configure("TCheckbutton", background=CARD, font=(FONT, 10))
+        st.map("TCheckbutton", background=[("active", CARD)], indicatorcolor=[("selected", ACCENT)])
+        st.configure("Accent.Horizontal.TProgressbar", troughcolor="#ECE7E1", background=ACCENT, thickness=4,
+                     borderwidth=0, lightcolor=ACCENT, darkcolor=ACCENT)
+
+    def _card(self, parent, num: str, title: str, sub: str = ""):
+        """Thẻ trắng có tiêu đề nhỏ; trả về frame có .head và .body."""
+        card = tk.Frame(parent, bg=CARD, highlightthickness=1, highlightbackground=BORDER)
+        card.pack(fill="x", pady=(0, 12))
+        card.head = tk.Frame(card, bg=CARD)
+        card.head.pack(fill="x", padx=16, pady=(12, 8))
+        tk.Label(card.head, text=num, bg=ACCENT_SOFT, fg=ACCENT_DARK, font=(FONT, 9, "bold"), width=2).pack(side="left")
+        tk.Label(card.head, text=title, bg=CARD, fg=TEXT, font=(FONT, 11, "bold")).pack(side="left", padx=(8, 0))
+        if sub:
+            tk.Label(card.head, text=sub, bg=CARD, fg=MUTED, font=(FONT, 9)).pack(side="left", padx=(8, 0), pady=(2, 0))
+        card.body = tk.Frame(card, bg=CARD)
+        card.body.pack(fill="x", padx=16, pady=(0, 14))
+        return card
+
+    def _toggle(self, parent, text: str, var: tk.BooleanVar) -> tk.Frame:
+        """Ô tick gọn: ☑ màu nhấn khi bật, ☐ xám khi tắt; bấm vào chữ cũng được."""
+        f = tk.Frame(parent, bg=CARD, cursor="hand2")
+        box = tk.Label(f, bg=CARD, font=(FONT, 13), cursor="hand2")
+        box.pack(side="left")
+        tk.Label(f, text=text, bg=CARD, fg=TEXT, font=(FONT, 10), cursor="hand2").pack(side="left", padx=(4, 0))
+
+        def paint(*_):
+            box.config(text="☑" if var.get() else "☐", fg=ACCENT if var.get() else MUTED)
+        for w in (f, *f.winfo_children()):
+            w.bind("<Button-1>", lambda _e: var.set(not var.get()))
+        var.trace_add("write", paint)
+        paint()
+        return f
+
+    def toggle_advanced(self) -> None:
+        if self.adv.winfo_ismapped():
+            self.adv.pack_forget()
+            self.adv_btn.config(text="Nâng cao ▸")
+        else:
+            self.adv.pack(fill="x")
+            self.adv_btn.config(text="Nâng cao ▾")
+
+    def toggle_log(self) -> None:
+        if self.log.winfo_ismapped():
+            self.log.pack_forget()
+            self.log_btn.config(text="Chi tiết ▸")
+        else:
+            self.log.pack(fill="both", expand=True, pady=(8, 0))
+            self.log_btn.config(text="Chi tiết ▾")
 
     # ---------- clip ----------
     def add_paths(self, paths: list[Path]) -> None:
@@ -191,7 +311,7 @@ class App(tk.Tk):
 
     def move(self, step: int) -> None:
         sel = self.listbox.curselection()
-        if not sel:
+        if not sel or not self.clips:
             return
         i, j = sel[0], sel[0] + step
         if 0 <= j < len(self.clips):
@@ -200,6 +320,8 @@ class App(tk.Tk):
             self.listbox.selection_set(j)
 
     def remove(self) -> None:
+        if not self.clips:
+            return
         for i in reversed(self.listbox.curselection()):
             del self.clips[i]
         self.refresh()
@@ -210,8 +332,11 @@ class App(tk.Tk):
 
     def refresh(self) -> None:
         self.listbox.delete(0, "end")
+        if not self.clips:  # dòng gợi ý khi chưa có clip
+            self.listbox.insert("end", "   Chưa có clip — bấm  + Thêm clip  hoặc  Thư mục…")
+            self.listbox.itemconfig(0, fg=MUTED, selectbackground="#FAF8F6", selectforeground=MUTED)
         for i, c in enumerate(self.clips, 1):
-            self.listbox.insert("end", f"  {i}.  {c.name}")
+            self.listbox.insert("end", f"   {i}.   {c.name}")
         if self.clips and self.out_auto:  # lưu ngay trong thư mục chứa clip, không trùng tên file cũ
             folder = self.clips[0].parent
             out, k = folder / f"{folder.name}_hook.mp4", 2
@@ -260,10 +385,13 @@ class App(tk.Tk):
         self.set_log("")
         self.bar["value"] = 1
         self.status.config(text="Đang bắt đầu...")
-        self.run_btn.config(state="disabled")
-        self.cancel_btn.config(state="normal")
+        self.run_btn.config(state="disabled", text="Đang ghép…")
+        self.cancel_btn.pack(side="left", padx=(10, 0))  # nút Huỷ chỉ hiện khi đang ghép
+        if not self.bar.winfo_ismapped():
+            self.bar.pack(fill="x", pady=(12, 0), before=self.srow)
         self.open_btn.config(state="disabled")
         self.folder_btn.config(state="disabled")
+        self.status.config(fg=TEXT)
         self.cover.config(image="", text="Đang xử lý…")
         threading.Thread(target=self.worker, args=(cmd,), daemon=True).start()
 
@@ -308,17 +436,19 @@ class App(tk.Tk):
 
     def finish(self, ok: bool, err: str | None) -> None:
         self.proc = None
-        self.run_btn.config(state="normal")
-        self.cancel_btn.config(state="disabled")
+        self.run_btn.config(state="normal", text="▶   Ghép video")
+        self.cancel_btn.pack_forget()
         if ok and self.result.exists():
             self.bar["value"] = 100
-            self.status.config(text=f"XONG!  {self.result.name}")
+            self.status.config(text=f"✓  Xong: {self.result.name}", fg="#3C7A4B")
             self.open_btn.config(state="normal")
             self.folder_btn.config(state="normal")
             self.show_cover(self.result.with_suffix(".cover.jpg"))
         else:
-            self.status.config(text="Có lỗi, xem nhật ký bên dưới." if not err else err)
+            self.status.config(text=err or "Có lỗi — bấm Chi tiết ▸ để xem.", fg=ACCENT_DARK)
             self.cover.config(image="", text="Chưa có kết quả")
+            if not self.log.winfo_ismapped():
+                self.toggle_log()
             if err:
                 self.append_log(err)
 
@@ -327,7 +457,7 @@ class App(tk.Tk):
             from PIL import Image, ImageTk
 
             img = Image.open(path)
-            img.thumbnail((180, 320))
+            img.thumbnail((PREVIEW_W, PREVIEW_H))
             self.cover_img = ImageTk.PhotoImage(img)
             self.cover.config(image=self.cover_img, text="")
         except Exception:
@@ -336,7 +466,7 @@ class App(tk.Tk):
     def cancel(self) -> None:
         if self.proc and messagebox.askyesno("Huỷ", "Dừng ghép video?"):
             self.cancel_now()
-            self.status.config(text="Đã huỷ.")
+            self.status.config(text="Đã huỷ.", fg=MUTED)
 
     def on_close(self) -> None:
         if self.proc and not messagebox.askyesno("Đang ghép", "Video đang được ghép. Thoát và huỷ?"):
@@ -404,7 +534,7 @@ class App(tk.Tk):
         messagebox.showerror("Chưa cập nhật được", msg)
 
     def _update_done(self) -> None:
-        self.update_btn.config(state="normal", text="⟳ Cập nhật")
+        self.update_btn.config(state="normal", text="⟳  Cập nhật")
 
     def _restart(self, new: str) -> None:
         messagebox.showinfo("Đã cập nhật", f"Đã cập nhật lên v{new}. App sẽ mở lại.")
