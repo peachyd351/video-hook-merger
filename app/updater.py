@@ -112,15 +112,18 @@ def apply_update(token: str, log=print) -> bool:
     old_req = (APP / "requirements.txt").read_bytes() if (APP / "requirements.txt").exists() else b""
     with zipfile.ZipFile(io.BytesIO(data)) as z:
         names = [n for n in z.namelist() if not n.endswith("/")]
-        root = names[0].split("/", 1)[0] + "/"  # thư mục gốc "owner-repo-sha/"
-        if not any(n == root + "app/hook_merge.py" for n in names):
+        marker = next((n for n in names if n == "app/hook_merge.py" or n.endswith("/app/hook_merge.py")), None)
+        if not marker:
             raise UpdateError("Bản trên GitHub không đúng cấu trúc (thiếu app/hook_merge.py), không cập nhật.")
+        root = marker[: -len("app/hook_merge.py")]  # thư mục gốc "owner-repo-sha/"
         count = 0
         for n in names:
+            if not n.startswith(root):
+                continue
             rel = n[len(root):]
             parts = rel.split("/")
-            if not rel or any(p in KEEP for p in parts):
-                continue
+            if not rel or ".." in parts or any(p in KEEP for p in parts):
+                continue  # giữ thư viện/model/cài đặt; không ghi ra ngoài thư mục tool
             dest = TOP / rel
             dest.parent.mkdir(parents=True, exist_ok=True)
             with z.open(n) as src, open(dest, "wb") as out:
