@@ -24,7 +24,7 @@ VIDEO_EXT = {".mp4", ".mov", ".mkv", ".webm", ".m4v", ".avi"}
 SETTINGS = ROOT / ".gui_settings.json"
 STYLE_AUTO = "Tự động (theo câu hook + trang phục)"
 STYLES = {STYLE_AUTO: None, **{p.label: key for key, p in dz.PRESETS.items()}}
-HOOK_DUR = {"Hết cảnh đầu": "clip1", "3 giây": "3", "4 giây": "4", "5 giây": "5"}
+HOOK_DUR = {"Hết cảnh đầu": "clip1", "3 giây": "3", "4 giây": "4", "5 giây": "5"}  # tối đa hết cảnh đầu
 # mốc tiến trình theo log của hook_merge.py
 STAGES = [("Đo tốc độ nói", 5, "Đo tốc độ nói từng clip..."), ("1/3 Ghép clip", 15, "Ghép + cắt + tăng tốc clip..."),
           ("2/3 Tách người", 35, "Tách người mẫu khỏi nền..."), ("Phân tích clip", 75, "Thiết kế chữ..."),

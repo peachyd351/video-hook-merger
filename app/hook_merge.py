@@ -474,6 +474,12 @@ def render_overlay(line1: str, line2: str, w: int, h: int, out: Path,
     img.save(out)
 
 
+# Bản cuối dùng x264 "veryfast": trên Xeon E5 v2 nhanh ~2x so với "fast", SSIM 0.994 vs 0.996 (khó thấy).
+def enc_threads() -> list[str]:
+    """VHM_CPU_THREADS cũng giới hạn luồng mã hoá video (mặc định: ffmpeg dùng hết CPU)."""
+    return ["-threads", str(devmod.cpu_threads())] if os.environ.get("VHM_CPU_THREADS") else []
+
+
 def ffmpeg(*args: str) -> None:
     subprocess.run(["ffmpeg", "-y", "-hide_banner", "-loglevel", "error", "-stats", *args], check=True)
 
@@ -521,7 +527,7 @@ def render_base(clips: list[Path], infos: list[dict], w: int, h: int, fps: int, 
             n += 1
     parts.append(f"{concat_in}concat=n={n}:v=1:a=1[vc][ac]")
     ffmpeg(*inputs, "-filter_complex", ";".join(parts), "-map", "[vc]", "-map", "[ac]",
-           "-c:v", "libx264", "-preset", "ultrafast", "-crf", "10", "-pix_fmt", "yuv420p",
+           "-c:v", "libx264", "-preset", "ultrafast", "-crf", "10", *enc_threads(), "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "256k", str(out))
 
 
@@ -756,7 +762,8 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
     if args.hook_dur == "clip1":
         nframes = first["frames"]  # đúng tới frame cuối của cảnh đầu
     else:
-        nframes = min(total_frames, max(1, round(float(args.hook_dur) * fps)))
+        # chữ (và tách nền) tối đa hết cảnh đầu: không tràn sang clip 2
+        nframes = min(first["frames"], max(1, round(float(args.hook_dur) * fps)))
     hook_dur = nframes / fps
 
     with tempfile.TemporaryDirectory() as tmp:
@@ -837,7 +844,7 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
             extra = ["-f", "rawvideo", "-pix_fmt", "gray", "-s", f"{aw}x{ah}", "-r", str(fps), "-i", str(alpha)]
         ffmpeg("-i", str(base), "-loop", "1", "-t", f"{hook_dur:.4f}", "-i", str(overlay), *extra,
                "-filter_complex", fc, "-map", "[v]", "-map", "0:a",
-               "-c:v", "libx264", "-preset", "fast", "-crf", str(args.crf), "-pix_fmt", "yuv420p",
+               "-c:v", "libx264", "-preset", "veryfast", "-crf", str(args.crf), *enc_threads(), "-pix_fmt", "yuv420p",
                "-c:a", "copy", "-movflags", "+faststart", str(out))
     cover = out.with_suffix(".cover.jpg")
     ffmpeg("-i", str(out), "-frames:v", "1", "-q:v", "2", str(cover))

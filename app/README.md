@@ -90,7 +90,7 @@ bin\hook-merge.bat 1.mp4 2.mp4 3.mp4 -o out.mp4 --hook "Hẹn hò cuối tuần 
 | `--no-sync-speed` | Không đồng bộ tốc độ nói: cả 3 clip dùng đúng `--speed` |
 | `--ask` | Hỏi hook và tốc độ trong cửa sổ (Video Hook Merger.bat dùng tuỳ chọn này) |
 | `--style` | Ép phong cách: `sang_trong`, `tap_chi`, `lang_man`, `de_thuong`, `hien_dai`, `vibe_han`, `ca_tinh` |
-| `--hook-dur clip1` | Thời gian hiện chữ: `clip1` = hết cảnh đầu (mặc định), hoặc số giây, vd `4` |
+| `--hook-dur clip1` | Thời gian hiện chữ: `clip1` = hết cảnh đầu (mặc định), hoặc số giây, vd `4` (tối đa vẫn là hết cảnh đầu; chỉ cảnh đầu được tách nền) |
 | `--safe-top 0.08` | Vùng cấm phía trên (tỉ lệ chiều cao) cho tai thỏ / hàng icon Reels |
 | `--text-layer behind` | `behind` (mặc định): chữ sau người mẫu; `auto`: ưu tiên thumbnail đọc trọn chữ; `front`: chữ trước người mẫu |
 | `--no-trim` | Không cắt khoảng lặng / jump cut |

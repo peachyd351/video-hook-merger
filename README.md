@@ -24,10 +24,11 @@ Tool chạy được trên mọi máy Windows 10/11 64-bit (khuyến nghị RAM 
 
 | Máy | Cách chạy | Thời gian cho 3 clip 10 giây (tham khảo) |
 |---|---|---|
-| Card NVIDIA ≥ 3.5 GB VRAM | Tách nền 1080px + Whisper trên GPU | ~30 giây |
+| Card NVIDIA ≥ 3.5 GB VRAM (GTX 1050 Ti 4 GB trở lên) | Tách nền 1080px + Whisper trên GPU | ~30 giây (GTX 1070 Ti), ~45–60 giây (GTX 1050 Ti, ước tính) |
 | Card NVIDIA 2–3.5 GB VRAM | Tách nền 720px trên GPU, Whisper trên CPU | ~45–60 giây |
 | Card quá cũ, < 2 GB VRAM, AMD/Intel, không có card | Toàn bộ trên CPU, tách nền 720px (máy yếu: 540px) | ~2–4 phút |
 
+- Đã thử trên Xeon E5 v2 (chỉ có AVX, không AVX2): chạy tốt; Xeon E5 v3/v4 có AVX2 nên nhanh hơn. Toàn bộ quy trình dùng tối đa ~1.5 GB VRAM nên card 4 GB dư sức.
 - GPU lỗi khi đang chạy (tràn bộ nhớ, driver lỗi…) thì tool **tự làm lại bước đó bằng CPU**, không dừng giữa chừng.
 - Ép dùng CPU: đặt biến môi trường `VHM_FORCE_CPU=1`. Giới hạn số luồng CPU để máy vẫn mượt cho việc khác: `VHM_CPU_THREADS=4`.
 - Đổi card hoặc driver thì bấm lại `Setup.bat` để kiểm tra lại.
