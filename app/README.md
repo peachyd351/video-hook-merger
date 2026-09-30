@@ -3,7 +3,7 @@
 Hướng dẫn ngắn cho người dùng nằm ở `../README.md`. Các lệnh dưới đây chạy trong thư mục `app\`.
 
 Đầu vào: **3 clip** (theo thứ tự) và **1 câu hook**. Đầu ra: 1 video dọc đã cắt phần thừa và tăng tốc,
-có hook text 2 dòng tiếng Việt nằm **sau** người mẫu, kèm ảnh cover.
+có hook text tiếng Việt nằm **sau** người mẫu.
 
 ## Cài trên máy mới (Windows): bấm 1 lần
 
@@ -44,7 +44,7 @@ Bấm đúp shortcut **"Video Hook Merger"** trên Desktop (hoặc `Video Hook M
 3. **Tuỳ chọn:** tốc độ (mặc định 1.15), đồng bộ tốc độ nói, cắt khoảng lặng, phong cách chữ, thời gian hiện chữ. Tool nhớ lựa chọn cho lần sau.
 4. **Lưu vào:** tự điền `<tên thư mục>_hook.mp4` cạnh thư mục clip; bấm "Chọn…" để đổi.
 
-Bấm **▶ GHÉP VIDEO**, theo dõi thanh tiến trình. Xong thì ảnh cover hiện bên phải, bấm **Mở video** / **Mở thư mục** để xem. Bấm **Huỷ** để dừng giữa chừng.
+Bấm **Ghép video**, theo dõi thanh tiến trình. Xong thì bấm **Mở video** / **Mở thư mục**. Bấm **Huỷ** để dừng giữa chừng.
 
 ### Nâng cấp lên bản mới (không phải tải lại thư viện)
 
@@ -111,7 +111,7 @@ Prompt mẫu để bắt đầu (dán vào agent, mở tại thư mục tool):
 hoặc python verify.py nếu chưa có .venv). Nếu còn thiếu thư viện thì hỏi tôi trước khi chạy installer.
 Sau đó ghép 3 clip sau theo đúng thứ tự, hook "<câu hook>", tốc độ 1.15:
 <clip1> <clip2> <clip3>
-Báo lại đường dẫn video + ảnh cover, phong cách chữ đã chọn, và những chỗ jump cut tôi cần nghe lại.
+Báo lại đường dẫn video, phong cách chữ đã chọn, và những chỗ jump cut tôi cần nghe lại.
 ```
 
 Thứ tự việc agent phải làm:
@@ -119,7 +119,7 @@ Thứ tự việc agent phải làm:
 1. Chạy `verify.py` (hoặc `./verify.sh`) trước tiên.
 2. Nếu chưa cài: trên Windows, đề nghị người dùng tự bấm `Setup.bat` (setup sẽ hỏi họ trước khi cài). Agent chỉ được chạy `install.py` / `./install.sh` sau khi **người dùng đồng ý**, vì bước này tải 250 MB–2.5 GB từ Internet.
 3. Chạy `bin/hook-merge` (Windows: `bin\hook-merge.bat`) với 3 clip theo đúng thứ tự người dùng đưa.
-4. Đọc log và xem ảnh cover, rồi báo cáo.
+4. Đọc log rồi báo cáo.
 
 Giới hạn quyền của agent:
 
@@ -128,7 +128,7 @@ Giới hạn quyền của agent:
 - Tool không cần API key, không gọi dịch vụ trả phí, không upload video đi đâu. Không đăng video lên mạng xã hội nếu người dùng không yêu cầu.
 - Không ghi đè video cũ ngoài đường dẫn `-o` hoặc đường dẫn mặc định `<thư mục>_hook.mp4`.
 
-Kết quả bàn giao: `<tên>.mp4` + `<tên>.cover.jpg`. Báo đường dẫn, thời lượng, số giây đã cắt ở từng clip, phong cách chữ, và % chữ bị tóc che ở frame đầu.
+Kết quả bàn giao: `<tên>.mp4`. Báo đường dẫn, thời lượng, số giây đã cắt ở từng clip, phong cách chữ, và % chữ bị tóc che ở frame đầu.
 
 ## Giấy phép thành phần đóng kèm
 

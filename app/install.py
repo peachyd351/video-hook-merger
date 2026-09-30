@@ -66,7 +66,7 @@ def confirm(question: str, assume_yes: bool) -> bool:
         return False
 
 
-BASIC_MODULES = ["PIL", "numpy", "fontTools", "faster_whisper"]
+BASIC_MODULES = ["PIL", "numpy", "fontTools", "faster_whisper", "customtkinter"]
 WHISPER_MODEL = ROOT / ".cache" / "whisper-small" / "model.bin"  # dùng để đồng bộ tốc độ nói
 NET_HINT = ("Tải bị gián đoạn (mất mạng / đổi IP / mạng chập chờn?). Kiểm tra mạng rồi chạy lại "
             "Setup.bat: tool sẽ cài TIẾP phần còn thiếu, file đã tải xong không phải tải lại.")

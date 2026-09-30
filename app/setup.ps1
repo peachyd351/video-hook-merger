@@ -123,7 +123,7 @@ $hasVenv = $false
 if (Test-Path $venvPy) {
     try {
         $prev = $ErrorActionPreference; $ErrorActionPreference = "Continue"
-        & $venvPy -c "import PIL, numpy, fontTools, faster_whisper, torch" 2>$null | Out-Null
+        & $venvPy -c "import PIL, numpy, fontTools, faster_whisper, customtkinter, torch" 2>$null | Out-Null
         $hasVenv = ($LASTEXITCODE -eq 0) -and (Test-Path (Join-Path $Root ".cache\whisper-small\model.bin"))
     } catch { $hasVenv = $false } finally { $ErrorActionPreference = $prev }
     if ($hasVenv) { Ok "Thư viện Python đã cài đủ" } else { Warn "Thư viện Python cài dở (lần trước bị ngắt?) -> sẽ cài tiếp phần còn thiếu" }

@@ -846,9 +846,6 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
                "-filter_complex", fc, "-map", "[v]", "-map", "0:a",
                "-c:v", "libx264", "-preset", "veryfast", "-crf", str(args.crf), *enc_threads(), "-pix_fmt", "yuv420p",
                "-c:a", "copy", "-movflags", "+faststart", str(out))
-    cover = out.with_suffix(".cover.jpg")
-    ffmpeg("-i", str(out), "-frames:v", "1", "-q:v", "2", str(cover))
-    print(f"Ảnh cover (frame đầu): {cover}")
 
 
 def main() -> None:

@@ -43,7 +43,8 @@ def verify_manifest() -> None:
 
 def verify_imports() -> None:
     for mod, pipname in (("PIL", "pillow"), ("numpy", "numpy"), ("fontTools", "fonttools"),
-                         ("faster_whisper", "faster-whisper"), ("torch", "torch")):
+                         ("faster_whisper", "faster-whisper"), ("customtkinter", "customtkinter"),
+                         ("torch", "torch")):
         try:
             __import__(mod)
             ok = True
@@ -120,7 +121,7 @@ def smoke() -> None:
         out = tmp / "out.mp4"
         res = subprocess.run([sys.executable, str(ROOT / "hook_merge.py"), str(clips), "-o", str(out)],
                              capture_output=True, text=True, encoding="utf-8", errors="replace")
-        ok = res.returncode == 0 and out.exists() and out.with_suffix(".cover.jpg").exists()
+        ok = res.returncode == 0 and out.exists()
         check(ok, "Chạy thử ghép 3 clip (cắt lặng + tăng tốc + chữ + tách nền)",
               (res.stderr or res.stdout)[-800:])
         if ok:

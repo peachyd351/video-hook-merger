@@ -1,6 +1,6 @@
 ---
 name: video-hook-merger
-description: Ghép 3 clip dọc (thời trang, người mẫu nói) thành 1 video Reels, cắt khoảng lặng và jump cut, tăng tốc hình + giọng, tự thiết kế hook text 2 dòng tiếng Việt nằm sau người mẫu, xuất ảnh cover. Dùng khi người dùng đưa 3 clip (hoặc 1 thư mục clip) và một câu hook, hoặc bảo "ghép video + chèn text" theo kiểu "Nàng mặc đẹp".
+description: Ghép 3 clip dọc (thời trang, người mẫu nói) thành 1 video Reels, cắt khoảng lặng và jump cut, tăng tốc hình + giọng, tự thiết kế hook text 2 dòng tiếng Việt nằm sau người mẫu. Dùng khi người dùng đưa 3 clip (hoặc 1 thư mục clip) và một câu hook, hoặc bảo "ghép video + chèn text" theo kiểu "Nàng mặc đẹp".
 ---
 
 # Video Hook Merger
@@ -22,8 +22,8 @@ Code nằm trong thư mục `app\` (chứa file này); thư mục ngoài chỉ c
    ```
    Tốc độ mặc định là 1.15; người dùng muốn nhanh/chậm hơn thì đổi `--speed` (0.5–2.0).
    Tool tự đồng bộ tốc độ nói giữa các clip (Whisper, ±12% quanh `--speed`); `--no-sync-speed` để tắt.
-4. **Kiểm tra kết quả:** đọc log in ra (thời lượng cắt từng clip, phong cách chữ, % chữ bị tóc che ở frame đầu), xem `out.cover.jpg`.
-5. **Báo cáo** cho người dùng: đường dẫn `out.mp4` + `out.cover.jpg`, thời lượng, phong cách chữ đã chọn và lý do, những chỗ cần họ tự nghe lại (jump cut).
+4. **Kiểm tra kết quả:** đọc log in ra (thời lượng cắt từng clip, phong cách chữ, % chữ bị tóc che ở frame đầu).
+5. **Báo cáo** cho người dùng: đường dẫn `out.mp4`, thời lượng, phong cách chữ đã chọn và lý do, những chỗ cần họ tự nghe lại (jump cut).
 
 ## Quy tắc
 

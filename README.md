@@ -1,7 +1,7 @@
 # Video Hook Merger
 
 Ghép 3 clip dọc thành 1 video Reels: cắt khoảng lặng, tăng tốc và đồng bộ tốc độ nói,
-tự thiết kế chữ hook tiếng Việt nằm sau người mẫu, xuất kèm ảnh cover.
+tự thiết kế chữ hook tiếng Việt nằm sau người mẫu.
 
 ## Cài đặt (1 lần trên mỗi máy)
 
@@ -16,7 +16,7 @@ Bấm đúp shortcut **Video Hook Merger** (hoặc `Video Hook Merger.bat`):
 1. **Chọn clip:** "Thêm clip…" hoặc "Chọn thư mục…"; dùng ▲/▼ để đổi thứ tự.
 2. **Câu hook:** gõ câu hook, hoặc để trống để tool tự lấy từ tên file `b1…`. Câu ngắn tự thành 1 dòng đậm; câu dài được chia 2 dòng (dòng nhỏ nghiêng + dòng đậm). Dấu `|` để tự chia dòng, `*…*` để chọn chữ tô màu nhấn.
 3. **Tuỳ chọn:** tốc độ (mặc định 1.15), phong cách chữ, đồng bộ tốc độ nói, cắt khoảng lặng. Mục **Nâng cao ▸** có thời gian hiện chữ và nơi lưu video.
-4. Bấm **▶ Ghép video**. Xong thì ảnh cover hiện ở cột **Kết quả** bên phải, bấm **Mở video** để xem. Video và ảnh cover được lưu ngay trong thư mục chứa clip. Có lỗi thì bấm **Chi tiết ▸** để xem nhật ký.
+4. Bấm **Ghép video**. Xong thì bấm **Mở video** / **Mở thư mục**. Video được lưu ngay trong thư mục chứa clip. Có lỗi thì bấm **Chi tiết** để xem nhật ký.
 
 ## Máy yếu / không có card NVIDIA
 
@@ -35,7 +35,7 @@ Tool chạy được trên mọi máy Windows 10/11 64-bit (khuyến nghị RAM 
 
 ## Cập nhật
 
-Bấm nút **⟳ Cập nhật** ở góc trên app. Lần đầu, app hỏi **GitHub token** (repo này để private):
+App **tự kiểm tra bản mới mỗi khi mở** (và 3 tiếng một lần nếu để mở lâu). Có bản mới thì hiện dải thông báo **"Có bản mới vX.Y.Z"** ở đầu cửa sổ, bấm **Cập nhật** để cài (✕ để bỏ qua bản đó). Cũng có thể bấm nút **⟳ Cập nhật** ở góc trên bất cứ lúc nào. Lần đầu, app hỏi **GitHub token** (repo này để private):
 github.com → ảnh đại diện → **Settings → Developer settings → Personal access tokens → Fine-grained tokens → Generate new token**.
 Ở mục *Repository access* chỉ chọn repo này, ở *Permissions → Contents* chọn **Read-only**, rồi dán token vào app.
 Token được lưu trong `%APPDATA%\VideoHookMerger` của máy đó, không nằm trong thư mục app.
