@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import random
 import re
 import subprocess
@@ -36,6 +37,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 import design as dz
+import device as devmod
 
 HERE = Path(__file__).resolve().parent
 HOOK_BANK = HERE / "hooks.txt"
@@ -118,8 +120,12 @@ def measure_rates(jobs: list[dict]) -> dict:
     """Gọi speech_rate.py trong tiến trình riêng: thử GPU trước, lỗi/sập thì chạy lại bằng CPU."""
     if not jobs:
         return {}
-    import shutil as _sh
-    devices = ["cuda", "cpu"] if _sh.which("nvidia-smi") else ["cpu"]  # GPU lỗi thì tự thử CPU
+    prof = devmod.load()
+    if prof:  # theo cấu hình đã kiểm tra lúc Setup (card ít VRAM -> Whisper chạy CPU cho khỏi tràn)
+        devices = ["cuda", "cpu"] if prof.get("whisper_device") == "cuda" else ["cpu"]
+    else:
+        import shutil as _sh
+        devices = ["cuda", "cpu"] if _sh.which("nvidia-smi") and not devmod.force_cpu() else ["cpu"]
     for dev in devices:
         res = subprocess.run([sys.executable, str(HERE / "speech_rate.py"), "--device", dev],
                              input=json.dumps(jobs), capture_output=True, text=True,
@@ -519,17 +525,29 @@ def render_base(clips: list[Path], infos: list[dict], w: int, h: int, fps: int, 
            "-c:a", "aac", "-b:a", "256k", str(out))
 
 
-def load_rvm():
+def load_rvm(device: str | None = None):
     import torch
 
     warnings.filterwarnings("ignore", message=r".*torch\.jit\.load.*", category=FutureWarning)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if device is None:
+        prof = devmod.load()
+        if prof:  # cấu hình Setup.bat đã kiểm tra thật trên máy này
+            device = prof["rvm_device"]
+        else:
+            device = "cuda" if torch.cuda.is_available() and not devmod.force_cpu() else "cpu"
+    if device == "cpu":
+        torch.set_num_threads(devmod.cpu_threads())
     return torch.jit.load(str(RVM_MODEL), map_location=device).eval(), device
 
 
 def matte_size(w: int, h: int, device: str) -> tuple[int, int]:
-    mw = min(w, 1080 if device == "cuda" else 720) // 2 * 2  # CPU: giảm độ phân giải cho nhanh
+    prof = devmod.load()
+    if prof and prof.get("rvm_device") == device:
+        limit = prof["matte_width"]  # theo sức máy đã đo lúc Setup
+    else:
+        limit = 1080 if device == "cuda" else 720  # CPU: giảm độ phân giải cho nhanh
+    mw = min(w, limit) // 2 * 2
     return mw, round(h * mw / w) // 2 * 2
 
 
@@ -661,23 +679,37 @@ def matte_video(rvm, base: Path, w: int, h: int, fps: int, nframes: int,
     tr.start()
     tw.start()
     rec = [None] * 4
-    with torch.no_grad():
-        while (frame := inq.get()) is not None:
-            src = frame.to(device, non_blocking=True).permute(2, 0, 1)[None].float().div_(255)
-            _fgr, pha, *rec = model(src, *rec, ratio)
-            outq.put(pha[0, 0].mul(255).byte())
-    outq.put(None)
-    tw.join()
-    tr.join()
+    try:
+        with torch.no_grad():
+            while (frame := inq.get()) is not None:
+                src = frame.to(device, non_blocking=True).permute(2, 0, 1)[None].float().div_(255)
+                _fgr, pha, *rec = model(src, *rec, ratio)
+                outq.put(pha[0, 0].mul(255).byte())
+        outq.put(None)
+        tw.join()
+        tr.join()
+    finally:  # GPU lỗi giữa chừng: dừng ffmpeg + đóng file để lần làm lại (CPU) bắt đầu sạch
+        if tw.is_alive():
+            outq.put(None)
+        reader.kill()
+        reader.stdout.close()
+        reader.wait()
+        tw.join(timeout=10)
+        writer.close()
     print()
-    reader.stdout.close()
-    reader.wait()
-    writer.close()
     written, first_alpha, tops = state["written"], state["first"], state["tops"]
     return (round(float(np.median(tops)) * h / mh) if tops else None), written, first_alpha
 
 
 def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
+    prof = devmod.load()
+    if prof is None:  # vd vừa cập nhật bằng nút Cập nhật: kiểm tra thiết bị 1 lần (~10 giây)
+        print("Kiểm tra GPU/CPU lần đầu để chọn cấu hình hợp máy ...")
+        try:
+            prof = devmod.detect()
+        except Exception as e:
+            print(f"  (không kiểm tra được: {e}; dùng cấu hình mặc định)")
+    print("Thiết bị:", devmod.describe(prof) if prof else "mặc định")
     infos = [probe(c) for c in clips]
     for c, info in zip(clips, infos):
         full = info["duration"]
@@ -703,8 +735,14 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
     def preload():
         try:
             rvm = load_rvm()
-            if args.text_layer != "front":
-                warm_up_rvm(rvm, w, h)
+            try:
+                if args.text_layer != "front":
+                    warm_up_rvm(rvm, w, h)
+            except Exception as e:  # GPU có nhưng chạy lỗi (card cũ, thiếu VRAM...) -> CPU
+                if rvm[1] != "cuda":
+                    raise
+                print(f"  (GPU lỗi khi khởi động tách nền: {str(e).splitlines()[0][:120]} -> dùng CPU)")
+                rvm = load_rvm("cpu")
             rvm_box["rvm"] = rvm
         except Exception as e:  # báo lỗi khi thật sự cần dùng
             rvm_box["err"] = e
@@ -734,7 +772,14 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
         head_top, first_alpha = None, None
         if args.text_layer != "front":
             print("2/3 Tách người khỏi nền...")
-            head_top, written, first_alpha = matte_video(rvm, base, w, h, fps, nframes, alpha)
+            try:
+                head_top, written, first_alpha = matte_video(rvm, base, w, h, fps, nframes, alpha)
+            except Exception as e:  # GPU lỗi / tràn VRAM giữa chừng -> làm lại bằng CPU, không dừng
+                if rvm[1] != "cuda":
+                    raise
+                print(f"\n  (GPU lỗi khi tách nền: {str(e).splitlines()[0][:120]} -> làm lại bằng CPU)")
+                rvm = load_rvm("cpu")
+                head_top, written, first_alpha = matte_video(rvm, base, w, h, fps, nframes, alpha)
             nframes = max(1, written)  # khớp đúng số frame thật của cảnh đầu
             hook_dur = nframes / fps
             print(f"Đỉnh đầu ở y={head_top}/{h}" if head_top else "Không thấy người, dùng vị trí mặc định.")

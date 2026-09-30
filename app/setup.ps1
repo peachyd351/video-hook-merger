@@ -95,7 +95,25 @@ if ($py) { Ok "Python: $py" } else { Warn "Chưa có Python 3.9-3.13" }
 $hasFfmpeg = Test-Ffmpeg
 if ($hasFfmpeg) { Ok "ffmpeg: $((Get-Command ffmpeg).Source)" } else { Warn "Chưa có ffmpeg" }
 $gpu = [bool](Get-Command nvidia-smi -ErrorAction SilentlyContinue)
+$gpuNote = ""
+if ($gpu) {
+    # Card quá cũ (compute < 5.0) hoặc ít VRAM (< 2 GB): torch GPU không chạy được / hay tràn bộ nhớ -> dùng CPU
+    try {
+        $prev = $ErrorActionPreference; $ErrorActionPreference = "Continue"
+        $q = (& nvidia-smi --query-gpu=name,compute_cap,memory.total --format=csv,noheader,nounits 2>$null | Select-Object -First 1)
+        $ErrorActionPreference = $prev
+        if ($q) {
+            $parts = $q -split ",\s*"
+            $gpuNote = "$($parts[0]), $([math]::Round([double]$parts[2] / 1024, 1)) GB VRAM"
+            if (([double]$parts[1] -lt 5.0) -or ([double]$parts[2] -lt 2048)) {
+                $gpu = $false
+                $gpuNote += " (quá cũ hoặc ít VRAM -> dùng CPU)"
+            }
+        }
+    } catch { $ErrorActionPreference = "Stop" }
+}
 if ($Torch -eq "auto") { if ($gpu) { $Torch = "cuda" } else { $Torch = "cpu" } }
+if ($gpuNote) { Ok "Card: $gpuNote" }
 if ($Torch -eq "cuda") { Ok "Dùng torch bản GPU (NVIDIA, nhanh)" }
 elseif ($gpu) { Ok "Có card NVIDIA nhưng chọn bản CPU (-Torch cpu)" }
 else { Ok "Không có card NVIDIA -> dùng bản CPU (chậm hơn, kết quả như nhau)" }

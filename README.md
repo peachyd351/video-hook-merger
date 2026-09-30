@@ -18,6 +18,20 @@ Bấm đúp shortcut **Video Hook Merger** (hoặc `Video Hook Merger.bat`):
 3. **Tuỳ chọn:** tốc độ (mặc định 1.15), đồng bộ tốc độ nói, cắt khoảng lặng, phong cách chữ.
 4. Bấm **▶ GHÉP VIDEO**. Video và ảnh cover được lưu ngay trong thư mục chứa clip.
 
+## Máy yếu / không có card NVIDIA
+
+Tool chạy được trên mọi máy Windows 10/11 64-bit (khuyến nghị RAM ≥ 8 GB). `Setup.bat` tự **chạy thử trên GPU và CPU** rồi chọn cấu hình hợp sức máy:
+
+| Máy | Cách chạy | Thời gian cho 3 clip 10 giây (tham khảo) |
+|---|---|---|
+| Card NVIDIA ≥ 3.5 GB VRAM | Tách nền 1080px + Whisper trên GPU | ~30 giây |
+| Card NVIDIA 2–3.5 GB VRAM | Tách nền 720px trên GPU, Whisper trên CPU | ~45–60 giây |
+| Card quá cũ, < 2 GB VRAM, AMD/Intel, không có card | Toàn bộ trên CPU, tách nền 720px (máy yếu: 540px) | ~2–4 phút |
+
+- GPU lỗi khi đang chạy (tràn bộ nhớ, driver lỗi…) thì tool **tự làm lại bước đó bằng CPU**, không dừng giữa chừng.
+- Ép dùng CPU: đặt biến môi trường `VHM_FORCE_CPU=1`. Giới hạn số luồng CPU để máy vẫn mượt cho việc khác: `VHM_CPU_THREADS=4`.
+- Đổi card hoặc driver thì bấm lại `Setup.bat` để kiểm tra lại.
+
 ## Cập nhật
 
 Bấm nút **⟳ Cập nhật** ở góc trên app. Lần đầu, app hỏi **GitHub token** (repo này để private):

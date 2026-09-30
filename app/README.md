@@ -50,6 +50,10 @@ Bấm **▶ GHÉP VIDEO**, theo dõi thanh tiến trình. Xong thì ảnh cover 
 
 Giải nén bản mới, **chép toàn bộ file trong đó đè lên thư mục tool cũ**, rồi bấm `Setup.bat`. Setup thấy thư viện và model đã đủ nên chỉ kiểm tra lại, không tải gì thêm.
 
+## Thiết bị (`device.py`)
+
+`Setup.bat` / `verify.py` chạy `device.detect()`: đọc card (compute capability, VRAM), **chạy thử model tách nền thật trên GPU** (bắt lỗi "no kernel image", thiếu VRAM, driver lỗi), đo tốc độ CPU, rồi lưu `.cache/device.json` (`rvm_device`, `matte_width` 1080/720/540, `whisper_device`). Chưa có file này (vd vừa cập nhật bằng nút Cập nhật) thì lần ghép đầu tự kiểm tra. Khi chạy, GPU lỗi ở bước tách nền thì tự làm lại bằng CPU; Whisper chạy tiến trình riêng, GPU lỗi thì tự thử CPU. Biến môi trường: `VHM_FORCE_CPU=1`, `VHM_CPU_THREADS=4`.
+
 ## Tool làm gì
 
 - **Cắt phần thừa:** dò khoảng lặng theo độ to từng 20ms, với ngưỡng tính riêng cho từng clip (thấp hơn giọng nói 20 dB, cao hơn tiếng nền 6 dB), nên clip có nhạc nền vẫn tìm được chỗ ngừng.

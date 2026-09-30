@@ -45,7 +45,8 @@ def load_model(device: str):
         os.environ["PATH"] = lib + os.pathsep + os.environ.get("PATH", "")
         # float32 nhanh nhất trên card đời cũ (GTX 10xx không có int8/fp16 nhanh)
         return WhisperModel(str(WHISPER_DIR), device="cuda", compute_type="float32")
-    return WhisperModel(str(WHISPER_DIR), device="cpu", compute_type="int8")
+    threads = int(os.environ.get("VHM_CPU_THREADS") or 0)  # 0 = tự chọn
+    return WhisperModel(str(WHISPER_DIR), device="cpu", compute_type="int8", cpu_threads=threads)
 
 
 def load_audio(path: str) -> np.ndarray:

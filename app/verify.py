@@ -129,6 +129,20 @@ def smoke() -> None:
             print(f"  [--]   Video thử dài {float(dur):.2f}s (3 clip x 3s, đã cắt lặng + tăng tốc)")
 
 
+def verify_device() -> None:
+    """Chạy thử model thật trên GPU/CPU; GPU hỏng không phải lỗi: tool tự dùng CPU."""
+    import device
+
+    try:
+        prof = device.detect()
+        print("  [--]   Thiết bị: " + device.describe(prof))
+        ok = True
+    except Exception as e:
+        ok = False
+        print(f"         {e}")
+    check(ok, "Kiểm tra thiết bị (GPU/CPU chạy được model tách nền)", "Xem lỗi ở trên")
+
+
 def smoke_gui() -> None:
     """Mở rồi đóng cửa sổ giao diện để chắc chắn gui.py chạy được."""
     try:
@@ -155,6 +169,8 @@ def main() -> int:
     verify_imports()
     if not FAIL:
         verify_assets()
+    if not FAIL:
+        verify_device()
     if args.smoke and not FAIL:
         smoke()
         smoke_gui()
