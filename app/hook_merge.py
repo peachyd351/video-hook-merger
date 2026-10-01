@@ -375,8 +375,12 @@ def auto_hook() -> str:
 
 
 def resolve_hook(args, clips: list[Path]) -> tuple[str, str]:
+    """Câu hook người dùng nhập. Để trống -> ("", ""): video không có chữ.
+    --auto-hook: tự lấy từ hook.txt / tên file b1 / kho câu mẫu khi để trống."""
     if args.hook and dz.clean_text(args.hook):
         return split_hook(args.hook)
+    if not args.auto_hook:
+        return "", ""
     folder = clips[0].parent
     hook_file = folder / "hook.txt"
     if hook_file.exists():
@@ -736,6 +740,7 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
     w, h = w - w % 2, h - h % 2
     # Nạp torch + model tách nền và "khởi động" nó song song trong lúc Whisper chạy / ghép clip:
     # TorchScript mất vài giây tối ưu ở những lần gọi đầu, làm trước thì lúc tách nền thật đã sẵn sàng.
+    has_text = bool(line2.strip())
     rvm_box: dict = {}
 
     def preload():
@@ -753,7 +758,8 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
         except Exception as e:  # báo lỗi khi thật sự cần dùng
             rvm_box["err"] = e
     loader = threading.Thread(target=preload, daemon=True)
-    loader.start()
+    if has_text:  # không có chữ thì không cần model tách nền
+        loader.start()
     sync_speeds(clips, infos, args)
     fps = args.fps or round(first["fps"])
     for info in infos:
@@ -771,6 +777,11 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
         base, alpha, overlay = tmp / "base.mp4", tmp / "alpha.gray", tmp / "hook.png"
         print("1/3 Ghép clip...")
         render_base(clips, infos, w, h, fps, args, base)
+        if not has_text:  # không có câu hook: chỉ xuất video đã ghép, cắt, tăng tốc
+            print("3/3 Xuất video (không có chữ)...")
+            ffmpeg("-i", str(base), "-c:v", "libx264", "-preset", "veryfast", "-crf", str(args.crf), *enc_threads(),
+                   "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", str(out))
+            return
 
         loader.join()
         if "err" in rvm_box:
@@ -852,7 +863,10 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Ghép clip + tự tạo hook text 2 dòng nằm sau người mẫu.")
     ap.add_argument("inputs", nargs="+", help="Thư mục chứa clip hoặc danh sách file clip (ghép theo thứ tự tên)")
     ap.add_argument("-o", "--output", help="File MP4 đầu ra (mặc định: <thư mục clip>/<tên thư mục>_hook.mp4, không ghi đè)")
-    ap.add_argument("--hook", help='Text hook, vd "Không biết phối đồ đi tiệc | Cứ mặc nguyên set này"')
+    ap.add_argument("--hook", help='Text hook, vd "Không biết phối đồ đi tiệc | Cứ mặc nguyên set này". '
+                                   "Để trống = video không có chữ")
+    ap.add_argument("--auto-hook", action="store_true",
+                    help="Không có --hook thì tự lấy từ hook.txt / tên file b1 / kho hooks.txt")
     ap.add_argument("--hook-dur", default="clip1",
                     help="Thời gian hiện text: \"clip1\" = hết cảnh đầu (mặc định), hoặc số giây, vd 4")
     ap.add_argument("--speed", type=float, default=1.15,
@@ -879,8 +893,7 @@ def main() -> None:
         stream.reconfigure(encoding="utf-8", errors="replace")
     if args.ask and not args.hook:
         # làm sạch trước: ký tự vô hình (BOM, zero-width) khi dán chữ không được tính là "đã nhập"
-        args.hook = dz.clean_text(input('Nhập hook ("dòng 1 | dòng 2", Enter = tự lấy từ hook.txt / '
-                                        'tên file b1 / kho hook): ')) or None
+        args.hook = dz.clean_text(input('Nhập hook ("dòng 1 | dòng 2", Enter = video không có chữ): ')) or None
     if args.ask:
         while True:
             raw = input(f"Tốc độ video + giọng (Enter = {args.speed}, vd 1.2): ").strip().replace(",", ".")
@@ -899,8 +912,6 @@ def main() -> None:
 
     clips = collect_clips(args.inputs)
     line1, line2 = resolve_hook(args, clips)
-    if not (line1 or line2):
-        sys.exit("Hook rỗng (không có chữ nào vẽ được). Hãy nhập lại câu hook.")
     if args.output:
         out = Path(args.output)
     else:
@@ -914,7 +925,10 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"Ghép {len(clips)} clip:", *[f"  - {c.name}" for c in clips], sep="\n")
-    print(f"Hook: {line1}  /  {line2}" if line1 else f"Hook (1 dòng): {line2}")
+    if not line2:
+        print("Không có câu hook -> video không có chữ")
+    else:
+        print(f"Hook: {line1}  /  {line2}" if line1 else f"Hook (1 dòng): {line2}")
     build(clips, line1, line2, out, args)
     print(f"Xong: {out}")
 

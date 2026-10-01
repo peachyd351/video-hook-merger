@@ -160,7 +160,7 @@ class App(ctk.CTk):
         # không gắn textvariable: CustomTkinter chỉ hiện chữ gợi ý khi ô nhập không gắn biến
         self.hook = ctk.CTkEntry(wrap, height=42, corner_radius=R, font=font(14), fg_color=CARD,
                                  border_width=0, text_color=TEXT, placeholder_text_color=MUTED,
-                                 placeholder_text="Câu hook  ·  trống = lấy từ tên file b1  ·  | chia dòng  ·  "
+                                 placeholder_text="Câu hook  ·  để trống = không có chữ  ·  | chia dòng  ·  "
                                                   "*chữ* tô màu")
         self.hook.pack(fill="x", pady=(10, 0))
 

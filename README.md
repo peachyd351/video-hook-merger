@@ -14,7 +14,7 @@ tự thiết kế chữ hook tiếng Việt nằm sau người mẫu.
 Bấm đúp shortcut **Video Hook Merger** (hoặc `Video Hook Merger.bat`):
 
 1. **Chọn clip:** "Thêm clip…" hoặc "Chọn thư mục…"; dùng ▲/▼ để đổi thứ tự.
-2. **Câu hook:** gõ câu hook, hoặc để trống để tool tự lấy từ tên file `b1…`. Câu ngắn tự thành 1 dòng đậm; câu dài được chia 2 dòng (dòng nhỏ nghiêng + dòng đậm). Dấu `|` để tự chia dòng, `*…*` để chọn chữ tô màu nhấn.
+2. **Câu hook:** gõ câu hook. **Để trống thì video không có chữ** (chỉ ghép + cắt + tăng tốc, nhanh hơn). Câu ngắn tự thành 1 dòng đậm; câu dài được chia 2 dòng (dòng nhỏ nghiêng + dòng đậm). Dấu `|` để tự chia dòng, `*…*` để chọn chữ tô màu nhấn.
 3. **Tuỳ chọn:** tốc độ (mặc định 1.15), phong cách chữ, đồng bộ tốc độ nói, cắt khoảng lặng. Mục **Nâng cao ▸** có thời gian hiện chữ và nơi lưu video.
 4. Bấm **Ghép video**. Xong thì bấm **Mở video** / **Mở thư mục**. Video được lưu ngay trong thư mục chứa clip. Có lỗi thì bấm **Chi tiết** để xem nhật ký.
 

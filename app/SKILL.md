@@ -15,7 +15,7 @@ Code nằm trong thư mục `app\` (chứa file này); thư mục ngoài chỉ c
    Nếu chưa cài: trên Windows đề nghị người dùng bấm `Setup.bat` (tự cài Python/ffmpeg/thư viện sau khi hỏi họ 1 lần). Hoặc chạy `./install.sh`. Installer sẽ hỏi trước khi tải (~250 MB bản CPU, ~2.5 GB bản GPU); **hỏi người dùng** trước khi trả lời "y".
    Nếu thiếu ffmpeg: **không tự cài phần mềm hệ thống**, hãy đưa lệnh cho người dùng tự chạy (`winget install Gyan.FFmpeg` / `brew install ffmpeg`).
 2. **Xác định input:** 3 clip theo thứ tự người dùng đưa (truyền từng file theo đúng thứ tự), hoặc 1 thư mục (ghép theo thứ tự tên file).
-   Hook lấy theo thứ tự ưu tiên: `--hook "câu"` → `hook.txt` trong thư mục → tên file `b1<câu hook>` trong thư mục → kho `hooks.txt`.
+   Hook: `--hook "câu"`. Không có `--hook` thì video **không có chữ**; thêm `--auto-hook` để tự lấy từ `hook.txt` → tên file `b1<câu hook>` → kho `hooks.txt`.
 3. **Chạy:**
    ```
    bin/hook-merge clip1.mp4 clip2.mp4 clip3.mp4 -o out.mp4 --hook "Một chút điệu đà cho buổi tiệc tối nay" --speed 1.15

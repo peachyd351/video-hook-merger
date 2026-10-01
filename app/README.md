@@ -85,7 +85,8 @@ bin\hook-merge.bat 1.mp4 2.mp4 3.mp4 -o out.mp4 --hook "Hẹn hò cuối tuần 
 
 | Tuỳ chọn | Ý nghĩa |
 |---|---|
-| `--hook "câu"` | Câu hook (`\|` để tự chia 2 dòng). Bỏ trống: `hook.txt` → tên file `b1...` → `hooks.txt` |
+| `--hook "câu"` | Câu hook (`\|` để tự chia 2 dòng). Không có `--hook` = video không có chữ |
+| `--auto-hook` | Không có `--hook` thì tự lấy từ `hook.txt` → tên file `b1...` → `hooks.txt` |
 | `--speed 1.15` | Tốc độ hình + giọng, từ 0.5 đến 2.0 (`1.1` = tốc độ video mẫu, `1` = giữ nguyên); là mức chung, từng clip lệch tối đa ±12% để nhịp nói đều |
 | `--no-sync-speed` | Không đồng bộ tốc độ nói: cả 3 clip dùng đúng `--speed` |
 | `--ask` | Hỏi hook và tốc độ trong cửa sổ (Video Hook Merger.bat dùng tuỳ chọn này) |
