@@ -69,8 +69,8 @@ FINAL_LUFS = -14.0  # mức Reels / TikTok
 PEAK_LIMIT = 0.841  # chặn đỉnh -1.5 dBFS (không rè trên điện thoại)
 
 # Chia dòng hook: câu ngắn thì 1 dòng; dài thì tìm chỗ cắt cân đối + tự nhiên.
-SINGLE_LINE_WORDS = 5
-SINGLE_LINE_CHARS = 22
+SINGLE_LINE_WORDS = 3  # <= 3 chữ: luôn 1 dòng (không có chỗ tách hợp lý)
+SINGLE_MIN_SCALE = 0.72  # vừa 1 dòng ở cỡ chữ >= 72% cỡ chuẩn thì giữ 1 dòng (đo bằng font thật lúc vẽ)
 SPLIT_STRONG = {"thì", "cứ", "là", "nhưng", "vì", "nên", "mà", "hãy", "chỉ"}  # dòng 2 hay mở bằng các từ này
 SPLIT_WEAK = {"mặc", "diện", "chọn", "phối", "ai", "ảnh", "để", "sẽ", "được", "khiến", "giúp", "dừng"}
 GLUE_NEXT = {"mọi", "những", "các", "một", "của", "cho", "với", "và", "rất", "cực", "siêu", "quá", "đang",
@@ -86,6 +86,9 @@ COMPOUNDS = {
     "thế nào", "bao nhiêu", "như thế", "đến thế", "đi làm", "đi chơi", "đi học", "nguyên set", "cả ngày",
     "hôm nay", "ngày mai", "trẻ trung", "năng động", "quý phái", "dịu dàng", "ngọt ngào", "cuốn hút", "thu hút",
     "không biết", "chưa biết", "mặc gì", "đẹp nhất", "xinh nhất", "cực kỳ", "siêu xinh", "vừa xinh", "lên đồ",
+    "bỏ qua", "nhẹ nhàng", "se lạnh", "mỗi ngày", "nàng thơ", "thu đông", "dự tiệc", "xinh xắn", "tủ đồ",
+    "hội bạn", "cầu kỳ", "nấm lùn", "cao hơn", "tham khảo", "công thức", "đồng điệu", "khuyết điểm", "gợi ý",
+    "đơn giản", "chiếm spotlight", "cả ngày", "đi sự", "sự kiện", "ánh mắt", "phải xinh", "gấp đôi", "hơn hẳn",
 }
 # Từ khoá thời trang được ưu tiên tô màu nhấn (nếu câu không có cụm Viết Hoa / *đánh dấu*).
 ACCENT_KEYS = ["vibe gái hàn", "gái hàn", "vibe", "tiểu thư", "sang chảnh", "sang trọng", "thanh lịch", "nữ tính",
@@ -323,8 +326,8 @@ def _split(text: str) -> tuple[str, str]:
         a, b = text.split("|", 1)
         return a.strip(), b.strip()
     words = text.split()
-    if len(words) <= SINGLE_LINE_WORDS or len(_plain(text)) <= SINGLE_LINE_CHARS:
-        return "", text  # câu ngắn: 1 dòng đậm
+    if len(words) <= SINGLE_LINE_WORDS:
+        return "", text  # câu rất ngắn: 1 dòng đậm
     low = [re.sub(r"[^\w]", "", w.lower()) for w in words]
     total = len(_plain(text))
     in_marker, marked = False, []  # từ nằm trong *...* (không cắt ở giữa)
@@ -352,11 +355,27 @@ def _split(text: str) -> tuple[str, str]:
             score += 0.35  # không cắt giữa từ ghép: "ánh | nhìn", "tự | tin"
         if marked[i] and marked[i - 1]:
             score += 1.0  # không cắt giữa cụm *...*
-        if words[i][:1].isupper() and words[i - 1][:1].isupper() and i - 1 > 0:
+        cap_i = words[i][:1].isupper()
+        cap_prev = i - 1 > 0 and words[i - 1][:1].isupper()
+        cap_next = i + 1 < len(words) and words[i + 1][:1].isupper()
+        if cap_i and cap_prev:
             score += 1.0  # không cắt giữa cụm viết hoa ("Vibe Gái Hàn")
+        elif cap_i and not cap_next:
+            score -= 0.45  # "nàng | Tự tin…", "thôi | Mà ai cũng…": chữ hoa đứng lẻ = mở vế mới
         if best is None or score < best:
             best, best_i = score, i
     return " ".join(words[:best_i]), " ".join(words[best_i:])
+
+
+def clause_capital(text: str) -> bool:
+    """Có chữ Viết Hoa đứng lẻ giữa câu (sau nó còn >= 2 chữ) = người gõ muốn xuống dòng ở đó.
+    Cụm viết hoa liền nhau (tên riêng "Đà Lạt", "Vibe Gái Hàn") không tính."""
+    words = text.replace("*", "").split()
+    for k in range(1, len(words) - 1):
+        if (words[k][:1].isupper() and not words[k - 1][:1].isupper()
+                and not words[k + 1][:1].isupper()):
+            return True
+    return False
 
 
 def accent_runs(line: str) -> list[tuple[str, bool]]:
@@ -451,7 +470,8 @@ def hook_from_b1(folder: Path) -> str | None:
     """Quy ước thư mục: ảnh bìa tên 'b1<câu hook>' (có hoặc không có đuôi ảnh)."""
     for f in sorted(folder.iterdir()):
         name = f.stem if f.suffix.lower() in {".jpg", ".jpeg", ".png", ".webp"} else f.name
-        m = re.match(r"^b1(?![0-9])\s*(.*\S)", name, flags=re.IGNORECASE)
+        name = re.sub(r"^(b1)\.(jpe?g|png|webp|jfif)\b", r"\1", name, flags=re.IGNORECASE)  # "b1.jpg Câu…"
+        m = re.match(r"^b1(?![0-9])[\s._-]*(.*\S)", name, flags=re.IGNORECASE)
         if f.is_file() and m and dz.clean_text(m.group(1)):
             return m.group(1)
     return None
@@ -470,9 +490,22 @@ def load_font(spec: dz.FontSpec, size: int, text: str, max_w: int) -> ImageFont.
         size = int(size * 0.95)
 
 
+def fits_one_line(text: str, design: dz.Design, w: int, scale: float = 1.0) -> bool:
+    """Cả câu nằm vừa 1 dòng đậm ở cỡ chữ >= SINGLE_MIN_SCALE cỡ chuẩn?"""
+    spec = design.preset.line2
+    plain = text.replace("*", "")
+    plain = plain.upper() if spec.upper else plain
+    real, plain, _ = dz.glyph_safe(spec, plain)
+    size = round(w * real.size * scale)
+    font = ImageFont.truetype(str(dz.FONTS / real.file), size)
+    if real.variation:
+        font.set_variation_by_name(real.variation)
+    return font.getlength(plain) * SINGLE_MIN_SCALE <= w * MAX_TEXT_W
+
+
 def render_overlay(line1: str, line2: str, w: int, h: int, out: Path,
                    head_top: int | None, safe_top: float, design: dz.Design,
-                   scale: float = 1.0) -> None:
+                   scale: float = 1.0, allow_single: bool = True) -> None:
     """Vẽ hook: dòng nhỏ (line1, có thể rỗng -> chỉ 1 dòng) + dòng đậm (line2) có cụm tô màu nhấn.
 
     Vùng an toàn luôn được ưu tiên: khối chữ không bao giờ lên trên vạch safe_top
@@ -481,6 +514,8 @@ def render_overlay(line1: str, line2: str, w: int, h: int, out: Path,
     """
     p = design.preset
     max_w = int(w * MAX_TEXT_W)
+    if allow_single and line1.strip() and fits_one_line(f"{line1} {line2}", design, w, scale):
+        line1, line2 = "", f"{line1} {line2}"  # câu không dài: giữ 1 dòng đậm (cỡ chữ tự thu vừa khung)
 
     def prep(spec, text):  # font thật sự dùng (dự phòng nếu thiếu glyph) + các đoạn chữ đã an toàn
         runs = accent_runs(text) if spec is p.line2 else [(text.replace("*", ""), False)]
@@ -861,7 +896,10 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
         feats = analyze_clips(rvm, base, infos, fps, w, h, head_top, args.safe_top, hook_dur)
         design = dz.choose_design(f"{line1} {line2}", feats, args.style)
         print(design.summary())
-        render = lambda sc: render_overlay(line1, line2, w, h, overlay, head_top, args.safe_top, design, sc)
+        # giữ đúng 2 dòng khi người dùng tự chia bằng |, hoặc viết hoa đầu vế 2 ("…cuối tuần Diện ngay…")
+        forced = "|" in (args.hook or "") or clause_capital(f"{line1} {line2}")
+        render = lambda sc: render_overlay(line1, line2, w, h, overlay, head_top, args.safe_top, design, sc,
+                                           allow_single=not forced)
 
         def coverage() -> float:
             text_a = np.asarray(Image.open(overlay).getchannel("A").resize(first_alpha.shape[::-1])) > 128
