@@ -61,6 +61,12 @@ GAP_BEFORE = 0.08  # giữ trước câu sau
 MIN_SEGMENT = 0.25  # đoạn giữ lại ngắn hơn mức này thì gộp/bỏ
 SYNC_MAX = 0.12  # đồng bộ tốc độ nói: mỗi clip lệch tối đa ±12% so với --speed
 SYNC_DEADBAND = 0.03  # chênh < 3% so với chuẩn thì không chỉnh
+# Cân bằng âm lượng giọng nói (LUFS = độ to theo cảm nhận tai người, chuẩn các nền tảng video)
+CLIP_LUFS = -18.0  # đưa giọng nói mỗi clip về cùng mức này trước khi nén
+MAX_CLIP_GAIN = 12.0  # mỗi clip tăng/giảm tối đa ±12 dB
+COMPRESSOR = "acompressor=threshold=-24dB:ratio=3:attack=8:release=180:makeup=2"  # làm đều giữa các câu/chữ
+FINAL_LUFS = -14.0  # mức Reels / TikTok
+PEAK_LIMIT = 0.841  # chặn đỉnh -1.5 dBFS (không rè trên điện thoại)
 
 # Chia dòng hook: câu ngắn thì 1 dòng; dài thì tìm chỗ cắt cân đối + tự nhiên.
 SINGLE_LINE_WORDS = 5
@@ -166,6 +172,51 @@ def sync_speeds(clips: list[Path], infos: list[dict], args) -> None:
             info["speed"] = round(min(2.0, max(0.5, args.speed * factor)), 3)
         rate = f"{r:.2f} chữ/giây" if r else "không đo được"
         print(f"    {c.name}: {rate} -> tốc độ {info['speed']}x")
+
+
+def loudness(path: Path, segments: list[tuple[float, float]] | None = None, af: str = "") -> float | None:
+    """Độ to (LUFS tích hợp, chuẩn EBU R128). Có segments thì chỉ đo phần lời được giữ lại."""
+    chain = []
+    if segments:
+        chain.append("aselect='" + "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in segments) + "'")
+    if af:
+        chain.append(af)
+    chain.append("ebur128")
+    res = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", str(path), "-vn", "-af", ",".join(chain),
+                          "-f", "null", "-"], capture_output=True, text=True, encoding="utf-8", errors="replace")
+    found = re.findall(r"I:\s+(-?[\d.]+) LUFS", res.stderr)
+    value = float(found[-1]) if found else None
+    return value if value is not None and value > -70 else None  # -70 = im lặng
+
+
+def level_clips(clips: list[Path], infos: list[dict], args) -> None:
+    """Đo độ to giọng nói từng clip và tính mức tăng/giảm để các clip to bằng nhau."""
+    for info in infos:
+        info["gain"] = 0.0
+    if args.no_level:
+        return
+    print("  Cân bằng âm lượng giọng nói:")
+    for c, info in zip(clips, infos):
+        if not info["audio"] or args.mute:
+            continue
+        lufs = loudness(c, info["segments"])
+        if lufs is None:
+            print(f"    {c.name}: không đo được (clip im lặng)")
+            continue
+        info["gain"] = round(max(-MAX_CLIP_GAIN, min(MAX_CLIP_GAIN, CLIP_LUFS - lufs)), 1)
+        print(f"    {c.name}: giọng {lufs:.1f} LUFS -> chỉnh {info['gain']:+.1f} dB")
+
+
+def final_audio_args(base: Path, args) -> list[str]:
+    """Âm thanh bản cuối: đưa cả video về FINAL_LUFS + chặn đỉnh (không bật cân bằng thì giữ nguyên)."""
+    if args.no_level or args.mute:
+        return ["-c:a", "copy"]
+    lufs = loudness(base)
+    if lufs is None:
+        return ["-c:a", "copy"]
+    gain = round(max(-MAX_CLIP_GAIN, min(MAX_CLIP_GAIN, FINAL_LUFS - lufs)), 1)
+    print(f"  Âm lượng cả video: {lufs:.1f} LUFS -> {FINAL_LUFS:.0f} LUFS ({gain:+.1f} dB), chặn đỉnh -1.5 dB")
+    return ["-af", f"volume={gain}dB,alimiter=limit={PEAK_LIMIT}:level=0", "-c:a", "aac", "-b:a", "192k"]
 
 
 def detect_silences(path: Path, duration: float) -> list[tuple[float, float]]:
@@ -501,6 +552,7 @@ def render_base(clips: list[Path], infos: list[dict], w: int, h: int, fps: int, 
     parts, concat_in, n = [], "", 0
     for i, info in enumerate(infos):
         sp = info["speed"]
+        vol = f"volume={info.get('gain', 0.0)}dB," if info.get("gain") else ""  # cân bằng độ to giữa các clip
         segs = info["segments"]
         has_audio = info["audio"] and not args.mute
         k = len(segs)
@@ -522,14 +574,16 @@ def render_base(clips: list[Path], infos: list[dict], w: int, h: int, fps: int, 
             if has_audio:
                 # hình và tiếng cắt cùng mốc, tăng tốc cùng hệ số -> khớp khẩu hình; atempo giữ cao độ giọng
                 fade = min(0.02, dur / 4)
-                parts.append(f"{asrc[j]}atrim=start={ts:.3f}:end={te:.3f},asetpts=PTS-STARTPTS,atempo={sp},"
+                parts.append(f"{asrc[j]}atrim=start={ts:.3f}:end={te:.3f},asetpts=PTS-STARTPTS,{vol}atempo={sp},"
                              f"aresample=44100,aformat=channel_layouts=stereo,apad,atrim=end={dur:.6f},"
                              f"afade=t=in:d={fade:.3f},areverse,afade=t=in:d={fade:.3f},areverse[a{n}]")
             else:
                 parts.append(f"anullsrc=r=44100:cl=stereo,atrim=duration={dur:.6f}[a{n}]")
             concat_in += f"[v{n}][a{n}]"
             n += 1
-    parts.append(f"{concat_in}concat=n={n}:v=1:a=1[vc][ac]")
+    parts.append(f"{concat_in}concat=n={n}:v=1:a=1[vc][acat]")
+    # nén nhẹ: câu/chữ nhỏ được nâng, to được hạ -> nghe đều tiếng (đo: chênh 5.8 dB -> 3.2 dB)
+    parts.append(f"[acat]{COMPRESSOR if not args.no_level else 'anull'}[ac]")
     ffmpeg(*inputs, "-filter_complex", ";".join(parts), "-map", "[vc]", "-map", "[ac]",
            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "10", *enc_threads(), "-pix_fmt", "yuv420p",
            "-c:a", "aac", "-b:a", "256k", str(out))
@@ -761,6 +815,7 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
     if has_text:  # không có chữ thì không cần model tách nền
         loader.start()
     sync_speeds(clips, infos, args)
+    level_clips(clips, infos, args)
     fps = args.fps or round(first["fps"])
     for info in infos:
         info["frames"] = sum(seg_frames(s, e, info["speed"], fps) for s, e in info["segments"])
@@ -780,7 +835,7 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
         if not has_text:  # không có câu hook: chỉ xuất video đã ghép, cắt, tăng tốc
             print("3/3 Xuất video (không có chữ)...")
             ffmpeg("-i", str(base), "-c:v", "libx264", "-preset", "veryfast", "-crf", str(args.crf), *enc_threads(),
-                   "-pix_fmt", "yuv420p", "-c:a", "copy", "-movflags", "+faststart", str(out))
+                   "-pix_fmt", "yuv420p", *final_audio_args(base, args), "-movflags", "+faststart", str(out))
             return
 
         loader.join()
@@ -856,7 +911,7 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
         ffmpeg("-i", str(base), "-loop", "1", "-t", f"{hook_dur:.4f}", "-i", str(overlay), *extra,
                "-filter_complex", fc, "-map", "[v]", "-map", "0:a",
                "-c:v", "libx264", "-preset", "veryfast", "-crf", str(args.crf), *enc_threads(), "-pix_fmt", "yuv420p",
-               "-c:a", "copy", "-movflags", "+faststart", str(out))
+               *final_audio_args(base, args), "-movflags", "+faststart", str(out))
 
 
 def main() -> None:
@@ -871,6 +926,8 @@ def main() -> None:
                     help="Thời gian hiện text: \"clip1\" = hết cảnh đầu (mặc định), hoặc số giây, vd 4")
     ap.add_argument("--speed", type=float, default=1.15,
                     help="Tốc độ hình + giọng nói (mặc định 1.15, nhanh hơn mẫu 1.1 một chút; giữ cao độ giọng)")
+    ap.add_argument("--no-level", action="store_true",
+                    help="Không cân bằng âm lượng giọng nói (giữ nguyên độ to gốc của từng clip)")
     ap.add_argument("--no-sync-speed", action="store_true",
                     help="Không đồng bộ tốc độ nói giữa các clip (mọi clip dùng đúng --speed)")
     ap.add_argument("--no-trim", action="store_true", help="Không cắt khoảng lặng (đầu, cuối, ngừng giữa câu)")

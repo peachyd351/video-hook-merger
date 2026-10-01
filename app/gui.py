@@ -183,10 +183,14 @@ class App(ctk.CTk):
         r2.pack(fill="x", pady=(12, 0))
         self.sync = ctk.BooleanVar(value=st.get("sync", True))
         self.trim = ctk.BooleanVar(value=st.get("trim", True))
+        self.level = ctk.BooleanVar(value=st.get("level", True))
         sw = dict(font=font(12), text_color=TEXT, progress_color=ACCENT, button_color="#FFFFFF",
                   button_hover_color="#E6E6EE", fg_color=FIELD, switch_width=36, switch_height=18)
         ctk.CTkSwitch(r2, text="Đồng bộ tốc độ nói", variable=self.sync, **sw).pack(side="left")
         ctk.CTkSwitch(r2, text="Cắt khoảng lặng", variable=self.trim, **sw).pack(side="left", padx=(16, 0))
+        r3 = ctk.CTkFrame(opt, fg_color=CARD)
+        r3.pack(fill="x", pady=(10, 0))
+        ctk.CTkSwitch(r3, text="Cân bằng âm lượng giọng nói", variable=self.level, **sw).pack(side="left")
         self.adv_btn = ctk.CTkButton(r2, text="Nâng cao ▾", width=90, height=26, corner_radius=8, font=font(12),
                                      fg_color="transparent", hover_color=FIELD, text_color=MUTED,
                                      command=self.toggle_advanced)
@@ -360,7 +364,7 @@ class App(ctk.CTk):
             out = out.with_suffix(".mp4")
         if out.exists() and not messagebox.askyesno("Đã có file", f"{out.name} đã tồn tại. Ghi đè?"):
             return
-        save_settings({"speed": speed, "sync": self.sync.get(), "trim": self.trim.get(),
+        save_settings({"speed": speed, "sync": self.sync.get(), "trim": self.trim.get(), "level": self.level.get(),
                        "style": self.style_var.get(), "dur": self.dur.get()})
 
         cmd = [python_exe(), "-u", str(ROOT / "hook_merge.py"), *map(str, self.clips), "-o", str(out),
@@ -373,6 +377,8 @@ class App(ctk.CTk):
             cmd.append("--no-sync-speed")
         if not self.trim.get():
             cmd.append("--no-trim")
+        if not self.level.get():
+            cmd.append("--no-level")
 
         self.result = out
         self.set_log("")

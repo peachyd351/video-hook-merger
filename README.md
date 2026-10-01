@@ -15,7 +15,7 @@ Bấm đúp shortcut **Video Hook Merger** (hoặc `Video Hook Merger.bat`):
 
 1. **Chọn clip:** "Thêm clip…" hoặc "Chọn thư mục…"; dùng ▲/▼ để đổi thứ tự.
 2. **Câu hook:** gõ câu hook. **Để trống thì video không có chữ** (chỉ ghép + cắt + tăng tốc, nhanh hơn). Câu ngắn tự thành 1 dòng đậm; câu dài được chia 2 dòng (dòng nhỏ nghiêng + dòng đậm). Dấu `|` để tự chia dòng, `*…*` để chọn chữ tô màu nhấn.
-3. **Tuỳ chọn:** tốc độ (mặc định 1.15), phong cách chữ, đồng bộ tốc độ nói, cắt khoảng lặng. Mục **Nâng cao ▸** có thời gian hiện chữ và nơi lưu video.
+3. **Tuỳ chọn:** tốc độ (mặc định 1.15), phong cách chữ, đồng bộ tốc độ nói, cắt khoảng lặng, **cân bằng âm lượng giọng nói** (đo độ to từng clip rồi chỉnh cho bằng nhau, nén nhẹ cho đều tiếng giữa các câu, đưa cả video về -14 LUFS như chuẩn Reels/TikTok). Mục **Nâng cao ▸** có thời gian hiện chữ và nơi lưu video.
 4. Bấm **Ghép video**. Xong thì bấm **Mở video** / **Mở thư mục**. Video được lưu ngay trong thư mục chứa clip. Có lỗi thì bấm **Chi tiết** để xem nhật ký.
 
 ## Máy yếu / không có card NVIDIA
