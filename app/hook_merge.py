@@ -34,7 +34,7 @@ import warnings
 
 import numpy as np
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 import design as dz
 import device as devmod
@@ -490,6 +490,63 @@ def load_font(spec: dz.FontSpec, size: int, text: str, max_w: int) -> ImageFont.
         size = int(size * 0.95)
 
 
+READ_SOFT, READ_STRONG = 0.02, 0.12  # tỉ lệ nét chữ khó đọc (< 3:1): > 2% bóng mảnh, > 12% bóng đậm + viền
+
+
+def readability(overlay: Path, samples: list) -> float:
+    """Tỉ lệ nét chữ có tương phản < 3:1 với ĐÚNG điểm nền phía sau (bỏ phần bị người mẫu che)."""
+    poor, total = 0, 0
+    for rgb, person in samples:
+        ov = np.asarray(Image.open(overlay).resize((rgb.shape[1], rgb.shape[0])))
+        mask = ov[..., 3] > 200
+        if person is not None:
+            mask &= person < 128
+        if not mask.any():
+            continue
+        yt = dz.luminance(ov[..., :3][mask].astype(float))
+        yb = dz.luminance(rgb[mask].astype(float))
+        ratio = (np.maximum(yt, yb) + 0.05) / (np.minimum(yt, yb) + 0.05)
+        poor += int((ratio < 3.0).sum())
+        total += int(mask.sum())
+    return poor / total if total else 0.0
+
+
+def pick_readable_design(text, feats, style, line1, line2, w, h, head_top, safe_top, forced,
+                         base: Path, alpha_raw: Path, first_alpha, nframes: int, overlay: Path) -> dz.Design:
+    """Vẽ thử chữ tối VÀ chữ sáng lên đúng các khung hình đầu video, đo độ dễ đọc thật,
+    chọn hướng dễ đọc hơn; còn chỗ khó đọc thì thêm bóng đổ (mảnh / đậm + viền) cho chữ luôn nổi."""
+    sw = 540
+    sh = round(h * sw / w) // 2 * 2
+    ids = sorted({0, nframes // 3, (2 * nframes) // 3})
+    frames = grab_frames(base, ids, sw, sh)
+    samples = []
+    for k in ids:
+        if k not in frames:
+            continue
+        person = None
+        if first_alpha is not None and alpha_raw.exists():  # alpha thô: đọc đúng frame k
+            ah, aw = first_alpha.shape
+            with open(alpha_raw, "rb") as fh:
+                fh.seek(k * aw * ah)
+                buf = fh.read(aw * ah)
+            if len(buf) == aw * ah:
+                person = np.asarray(Image.fromarray(np.frombuffer(buf, np.uint8).reshape(ah, aw)).resize((sw, sh)))
+        samples.append((frames[k], person))
+    auto = dz.choose_design(text, feats, style)
+    results = []
+    for dark in (auto.dark_text, not auto.dark_text):  # hướng tự chọn trước (thắng khi bằng điểm)
+        d = auto if dark == auto.dark_text else dz.choose_design(text, feats, style, dark)
+        render_overlay(line1, line2, w, h, overlay, head_top, safe_top, d, allow_single=not forced)
+        results.append((readability(overlay, samples), d))
+    poor, design = min(results, key=lambda r: r[0])
+    other = [p for p, d in results if d is not design][0]
+    design.shadow_level = 2 if poor > READ_STRONG else (1 if poor > READ_SOFT else 0)
+    hint = {0: "không cần bóng", 1: "thêm bóng mảnh", 2: "thêm bóng đậm + viền mảnh"}[design.shadow_level]
+    design.reasons.append(f"Đo trên khung hình: chữ {'tối' if design.dark_text else 'sáng'} khó đọc {poor:.0%} nét "
+                          f"(hướng kia {other:.0%}) -> {hint}")
+    return design
+
+
 def fits_one_line(text: str, design: dz.Design, w: int, scale: float = 1.0) -> bool:
     """Cả câu nằm vừa 1 dòng đậm ở cỡ chữ >= SINGLE_MIN_SCALE cỡ chuẩn?"""
     spec = design.preset.line2
@@ -552,15 +609,27 @@ def render_overlay(line1: str, line2: str, w: int, h: int, out: Path,
         y0 = round((safe_px + head_top) / 2 - (block_top + block_bot) / 2)
     y0 = max(y0, safe_px - block_top)
 
-    for (font, runs, color), cy in zip(lines, centers):
-        text = "".join(r for r, _ in runs)
-        width = font.getlength(text)
-        ascent, descent = font.getmetrics()
-        baseline = y0 + cy + (ascent - descent) / 2  # cùng đường chân chữ với anchor "mm"
-        x = w / 2 - width / 2
-        for r, acc in runs:  # vẽ từng đoạn trên cùng 1 đường chân chữ, đoạn nhấn đổi màu
-            draw.text((x, baseline), r, font=font, fill=design.accent if acc else color, anchor="ls")
-            x += font.getlength(r)
+    def draw_lines(target, offset=0.0, fill=None, stroke=0):
+        d = ImageDraw.Draw(target)
+        for (font, runs, color), cy in zip(lines, centers):
+            text = "".join(r for r, _ in runs)
+            ascent, descent = font.getmetrics()
+            baseline = y0 + cy + (ascent - descent) / 2 + offset  # cùng đường chân chữ với anchor "mm"
+            x = w / 2 - font.getlength(text) / 2 + offset
+            for r, acc in runs:  # vẽ từng đoạn trên cùng 1 đường chân chữ, đoạn nhấn đổi màu
+                d.text((x, baseline), r, font=font, fill=fill or (design.accent if acc else color), anchor="ls",
+                       stroke_width=stroke, stroke_fill=fill if stroke else None)
+                x += font.getlength(r)
+
+    if design.shadow and design.shadow_level:  # nền lẫn lộn: bóng sát chữ (không loang ra mặt người mẫu)
+        size = lines[-1][0].size
+        strong = design.shadow_level >= 2
+        sh = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        color = design.shadow[:3] + ((215 if strong else 140),)
+        draw_lines(sh, offset=max(1.0, size * (0.02 if strong else 0.025)), fill=color,
+                   stroke=max(1, round(size * 0.035)) if strong else 0)
+        img = Image.alpha_composite(img, sh.filter(ImageFilter.GaussianBlur(max(1.0, size * (0.025 if strong else 0.03)))))
+    draw_lines(img)
     img.save(out)
 
 
@@ -894,10 +963,11 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
 
         print("Phân tích clip để thiết kế chữ...")
         feats = analyze_clips(rvm, base, infos, fps, w, h, head_top, args.safe_top, hook_dur)
-        design = dz.choose_design(f"{line1} {line2}", feats, args.style)
-        print(design.summary())
         # giữ đúng 2 dòng khi người dùng tự chia bằng |, hoặc viết hoa đầu vế 2 ("…cuối tuần Diện ngay…")
         forced = "|" in (args.hook or "") or clause_capital(f"{line1} {line2}")
+        design = pick_readable_design(f"{line1} {line2}", feats, args.style, line1, line2, w, h, head_top,
+                                      args.safe_top, forced, base, alpha, first_alpha, nframes, overlay)
+        print(design.summary())
         render = lambda sc: render_overlay(line1, line2, w, h, overlay, head_top, args.safe_top, design, sc,
                                            allow_single=not forced)
 

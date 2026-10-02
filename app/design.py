@@ -213,8 +213,9 @@ class Features:
     bg_C: float
     bg_h: float
     bg_busy: float
-    bg_y_lo: float  # luminance nền (phân vị 10%) - xấu nhất cho chữ tối
-    bg_y_hi: float  # luminance nền (phân vị 90%) - xấu nhất cho chữ sáng
+    bg_y_lo: float  # luminance nền phân vị 25% (phần tối của nền)
+    bg_y_hi: float  # luminance nền phân vị 75% (phần sáng của nền)
+    bg_y_mid: float = 0.5  # luminance nền trung vị
     outfit_colors: list = field(default_factory=list)  # [(lab, weight, clip_idx)]
     bg_rgb: tuple = (235, 228, 220)  # màu nền trung vị vùng đặt chữ
     vivid: float = 0.0
@@ -232,7 +233,7 @@ def analyze(outfit_px: list[np.ndarray], band_px: np.ndarray) -> Features:
     bg_L, bg_C, bg_h = lch_of(band_lab.mean(0))
     y = luminance(band)
     feats = Features(bg_L, bg_C, bg_h, float(band_lab[:, 0].std()),
-                     float(np.percentile(y, 10)), float(np.percentile(y, 90)),
+                     float(np.percentile(y, 25)), float(np.percentile(y, 75)), float(np.median(y)),
                      bg_rgb=tuple(int(v) for v in np.median(band, axis=0)))
 
     all_lab = []
@@ -268,6 +269,9 @@ class Design:
     color2: tuple
     accent: tuple  # màu tô cụm từ nhấn trong dòng đậm
     reasons: list
+    shadow: tuple | None = None  # màu bóng đổ (chỉ dùng khi shadow_level > 0)
+    shadow_level: int = 0  # 0 = không, 1 = bóng mảnh, 2 = bóng đậm + viền mảnh (nền rất lẫn lộn)
+    dark_text: bool = True
 
     def summary(self) -> str:
         hx = lambda c: "#%02x%02x%02x" % c[:3]
@@ -324,28 +328,45 @@ ACCENT_PALETTE = [
 ]
 
 
-def fallback_accent(f: Features, text: str) -> tuple:
-    """Chọn màu trong bảng: ưu tiên màu có sắc độ xa màu nền; câu khác nhau ra màu khác nhau."""
+# Màu nhấn sáng cho chữ sáng trên nền tối: chọn CÙNG TÔNG với nền cho hài hoà
+# (nền gỗ / đèn vàng -> champagne, đào, hồng phấn; nền lạnh -> xanh băng, tím nhạt)
+ACCENT_PALETTE_LIGHT = [
+    ("vàng champagne", 0.88, 0.09, 85), ("đào", 0.85, 0.09, 50), ("hồng phấn", 0.84, 0.08, 10),
+    ("tím nhạt", 0.84, 0.08, 300), ("xanh băng", 0.88, 0.07, 230), ("bạc hà", 0.88, 0.07, 170),
+]
+
+
+def fallback_accent(f: Features, text: str, dark_text: bool = True) -> tuple:
+    """Màu nhấn khi trang phục trung tính. Chữ tối (nền sáng): màu đậm có sắc độ xa màu nền cho nổi.
+    Chữ sáng (nền tối): màu pastel cùng tông nền cho hài hoà. Câu khác nhau ra màu khác nhau."""
     def hue_gap(h):
         d = abs(h - f.bg_h) % 360
         return min(d, 360 - d)
-    ranked = sorted(ACCENT_PALETTE, key=lambda c: -hue_gap(c[3]))[:3]
+    if dark_text:
+        ranked = sorted(ACCENT_PALETTE, key=lambda c: -hue_gap(c[3]))[:3]
+    else:
+        ranked = sorted(ACCENT_PALETTE_LIGHT, key=lambda c: hue_gap(c[3]))[:2]
     return ranked[sum(map(ord, text)) % len(ranked)]
 
 
-def solve_color(L: float, C: float, h: float, dark_text: bool, f: Features, target: float = 4.5):
-    """Dịch độ sáng L tới khi đạt tương phản target với phần nền xấu nhất."""
-    bg_y = f.bg_y_lo if dark_text else f.bg_y_hi
+def solve_color(L: float, C: float, h: float, dark_text: bool, f: Features, target: float = 4.5,
+                limit: float | None = None):
+    """Dịch độ sáng L tới khi đạt tương phản target với độ sáng TRUNG VỊ của nền (phần lớn nền),
+    nhưng không vượt quá limit: không bao giờ ép thành đen / trắng tuyền."""
+    limit = (0.20 if dark_text else 0.97) if limit is None else limit
     step = -0.02 if dark_text else 0.02
     for _ in range(60):
         rgb = lch_to_rgb(L, C, h)
-        if contrast(float(luminance(np.array(rgb))), bg_y) >= target:
+        if contrast(float(luminance(np.array(rgb))), f.bg_y_mid) >= target:
             return rgb, True
-        L = float(np.clip(L + step, 0.05, 0.98))
+        if (dark_text and L <= limit) or (not dark_text and L >= limit):
+            return rgb, False
+        L = float(np.clip(L + step, 0.05, 0.99))
     return lch_to_rgb(L, C, h), False
 
 
-def choose_design(text: str, f: Features, style: str | None = None) -> Design:
+def choose_design(text: str, f: Features, style: str | None = None, dark_text: bool | None = None) -> Design:
+    """dark_text=None: tự chọn chữ tối/sáng theo nền; True/False: ép hướng (để đo độ dễ đọc cả 2 hướng)."""
     score, reasons = score_styles(text, f)
     if style:
         name = style
@@ -354,31 +375,38 @@ def choose_design(text: str, f: Features, style: str | None = None) -> Design:
         name = max(score, key=lambda k: score[k])
     preset = PRESETS[name]
 
-    # nền sáng -> chữ tối (ngả theo tông nền); nền tối -> chữ sáng
-    dark_text = contrast(0.0, f.bg_y_lo) >= contrast(1.0, f.bg_y_hi)
-    tone = "sáng" if dark_text else "tối"
-    reasons.append(f"Nền vùng chữ {tone} (L={f.bg_L:.2f}, độ rối={f.bg_busy:.2f}) -> chữ {'tối' if dark_text else 'sáng'}")
-    tint_c = min(f.bg_C * 0.6 + 0.012, 0.035)
-    L1, L2 = (0.40, 0.30) if dark_text else (0.93, 0.97)
-    color1, ok1 = solve_color(L1, tint_c, f.bg_h, dark_text, f)
-    color2, ok2 = solve_color(L2, tint_c, f.bg_h, dark_text, f)
+    # Chữ tối hay sáng: theo PHẦN LỚN nền (phân vị 25/75), không theo vài điểm cực tối (túi đen, khe kệ).
+    # Nền lưng chừng: ưu tiên chữ sáng (chữ sáng + bóng tối dễ đọc nhất trên mọi loại nền);
+    # chỉ dùng chữ tối khi phần lớn nền thật sự sáng.
+    c_dark = contrast(0.02, f.bg_y_lo)  # chữ tối, xét phần tối hơn của nền
+    c_light = contrast(1.0, f.bg_y_hi)  # chữ sáng, xét phần sáng hơn của nền
+    if dark_text is None:
+        dark_text = c_dark >= 4.5 and c_dark >= c_light
+    reasons.append(f"Nền vùng chữ: sáng trung vị {f.bg_y_mid:.2f}, tông màu {f.bg_h:.0f}° -> chữ "
+                   + ("tối" if dark_text else "sáng"))
+    # Màu chữ ngả theo tông nền, có sắc độ (nâu đậm / xanh than / kem ấm...), không phải đen / trắng tuyền
+    tint = float(np.clip(f.bg_C * 0.8 + 0.03, 0.04, 0.08))
+    if dark_text:
+        color1, ok1 = solve_color(0.42, tint * 0.8, f.bg_h, True, f, limit=0.22)
+        color2, ok2 = solve_color(0.32, tint, f.bg_h, True, f, limit=0.18)
+    else:
+        color1, ok1 = solve_color(0.90, min(tint, 0.05) * 0.6, f.bg_h, False, f)
+        color2, ok2 = solve_color(0.96, min(tint, 0.05) * 0.5, f.bg_h, False, f)
 
-    # Màu nhấn cho cụm từ nổi bật: sắc độ lấy từ trang phục (đậm lên cho rõ), không có thì lấy bảng màu.
-    accent_rgb, src = None, None
+    # Màu nhấn: sắc độ từ trang phục (hoặc bảng màu hợp nền); nền sáng -> đậm, nền tối -> sáng kiểu pastel
     acc = pick_accent(f)
     if acc:
         aL, aC, ah = acc
         src = "trang phục"
     else:
-        name_, aL, aC, ah = fallback_accent(f, text)
+        name_, aL, aC, ah = fallback_accent(f, text, dark_text)
         src = f"bảng màu ({name_})"
-    aL = min(aL, 0.52) if dark_text else max(aL, 0.82)
-    accent_rgb, ok = solve_color(aL, max(0.10, min(aC * 1.4, 0.17)), ah, dark_text, f, target=3.5)
-    if not ok:  # không đủ tương phản -> tô cùng màu dòng 2
-        accent_rgb, src = color2, None
-    if src:
-        reasons.append(f"Màu nhấn lấy từ {src}: #%02x%02x%02x" % accent_rgb)
+    if dark_text:
+        accent_rgb, ok = solve_color(min(aL, 0.52), max(0.10, min(aC * 1.4, 0.17)), ah, True, f, 3.0, limit=0.30)
+    else:
+        accent_rgb, ok = solve_color(max(aL, 0.82), max(0.09, min(aC * 1.2, 0.14)), ah, False, f, 3.0)
+    reasons.append(f"Màu nhấn lấy từ {src}: #%02x%02x%02x" % accent_rgb)
 
-    if not (ok1 and ok2):
-        reasons.append("Nền vùng chữ tương phản thấp: đã đẩy màu chữ tới mức đậm/nhạt nhất")
-    return Design(preset, color1 + (255,), color2 + (255,), accent_rgb + (255,), reasons)
+    # Màu bóng (sáng cho chữ tối, tối cho chữ sáng); có dùng hay không do bước đo độ dễ đọc trên khung hình quyết định
+    shadow = (250, 246, 240, 255) if dark_text else (16, 12, 10, 255)
+    return Design(preset, color1 + (255,), color2 + (255,), accent_rgb + (255,), reasons, shadow, 0, dark_text)
