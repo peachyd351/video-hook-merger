@@ -68,28 +68,7 @@ COMPRESSOR = "acompressor=threshold=-24dB:ratio=3:attack=8:release=180:makeup=2"
 FINAL_LUFS = -14.0  # mức Reels / TikTok
 PEAK_LIMIT = 0.841  # chặn đỉnh -1.5 dBFS (không rè trên điện thoại)
 
-# Chia dòng hook: câu ngắn thì 1 dòng; dài thì tìm chỗ cắt cân đối + tự nhiên.
-SINGLE_LINE_WORDS = 3  # <= 3 chữ: luôn 1 dòng (không có chỗ tách hợp lý)
-SINGLE_MIN_SCALE = 0.72  # vừa 1 dòng ở cỡ chữ >= 72% cỡ chuẩn thì giữ 1 dòng (đo bằng font thật lúc vẽ)
-SPLIT_STRONG = {"thì", "cứ", "là", "nhưng", "vì", "nên", "mà", "hãy", "chỉ"}  # dòng 2 hay mở bằng các từ này
-SPLIT_WEAK = {"mặc", "diện", "chọn", "phối", "ai", "ảnh", "để", "sẽ", "được", "khiến", "giúp", "dừng"}
-GLUE_NEXT = {"mọi", "những", "các", "một", "của", "cho", "với", "và", "rất", "cực", "siêu", "quá", "đang",
-             "bộ", "chiếc", "cái", "set", "mẫu", "kiểu", "màu", "đi", "đồ", "nàng"}  # không đứng cuối dòng 1
-GLUE_PREV = {"này", "đó", "kia", "nha", "nhé", "luôn", "ạ", "thôi", "đâu", "không", "chưa"}  # không mở dòng 2
 PARTICLES = {"nha", "nhé", "luôn", "ạ", "thôi", "nhen", "nè", "đó", "ha"}
-# Từ ghép hay gặp trong hook thời trang: không cắt dòng ở giữa (không có bộ tách từ tiếng Việt).
-COMPOUNDS = {
-    "ánh nhìn", "góc nhìn", "tự tin", "dừng lại", "bao giờ", "hết thời", "buổi tiệc", "tối nay", "đi tiệc",
-    "điệu đà", "cuối tuần", "hẹn hò", "phối đồ", "set đồ", "mùa đông", "mùa hè", "mùa thu", "gái hàn", "tiểu thư",
-    "nổi bật", "sang trọng", "sang chảnh", "thanh lịch", "nữ tính", "cá tính", "dễ thương", "công sở", "bạn thân",
-    "đám cưới", "xinh đẹp", "mặc đẹp", "tôn dáng", "hack dáng", "chân váy", "sơ mi", "vài giây", "mọi người",
-    "thế nào", "bao nhiêu", "như thế", "đến thế", "đi làm", "đi chơi", "đi học", "nguyên set", "cả ngày",
-    "hôm nay", "ngày mai", "trẻ trung", "năng động", "quý phái", "dịu dàng", "ngọt ngào", "cuốn hút", "thu hút",
-    "không biết", "chưa biết", "mặc gì", "đẹp nhất", "xinh nhất", "cực kỳ", "siêu xinh", "vừa xinh", "lên đồ",
-    "bỏ qua", "nhẹ nhàng", "se lạnh", "mỗi ngày", "nàng thơ", "thu đông", "dự tiệc", "xinh xắn", "tủ đồ",
-    "hội bạn", "cầu kỳ", "nấm lùn", "cao hơn", "tham khảo", "công thức", "đồng điệu", "khuyết điểm", "gợi ý",
-    "đơn giản", "chiếm spotlight", "cả ngày", "đi sự", "sự kiện", "ánh mắt", "phải xinh", "gấp đôi", "hơn hẳn",
-}
 # Từ khoá thời trang được ưu tiên tô màu nhấn (nếu câu không có cụm Viết Hoa / *đánh dấu*).
 ACCENT_KEYS = ["vibe gái hàn", "gái hàn", "vibe", "tiểu thư", "sang chảnh", "sang trọng", "thanh lịch", "nữ tính",
                "cá tính", "dễ thương", "nổi bật", "tự tin", "tôn dáng", "hack dáng", "đi tiệc", "hẹn hò", "công sở",
@@ -302,80 +281,13 @@ def collect_clips(inputs: list[str]) -> list[Path]:
 
 # ---------- hook text ----------
 
-def cap(s: str) -> str:
-    s = s.strip()
-    return s[:1].upper() + s[1:]
-
-
-def split_hook(text: str) -> tuple[str, str]:
-    """Chia hook thành (dòng nhỏ, dòng đậm). Câu ngắn -> 1 dòng: ("", câu)."""
-    a, b = _split(text)
-    if not a:
-        return "", cap(b)
-    # chỉ viết hoa đầu câu; dòng 2 là nửa sau của câu nên giữ nguyên cách viết (vd "ảnh nào cũng ra…")
-    return cap(a.rstrip(" ,:;–—-")), b.lstrip(" ,:;–—-")
-
-
-def _plain(t: str) -> str:
-    return t.replace("*", "")
-
-
-def _split(text: str) -> tuple[str, str]:
+def parse_hook(text: str | None) -> list[str]:
+    """Hook người dùng nhập đầy đủ, giữ nguyên câu chữ; CHỈ xuống dòng ở dấu |.
+    Rỗng -> [] (video không có chữ)."""
+    if not text:
+        return []
     text = dz.clean_text(text)
-    if "|" in text:  # người dùng tự chia
-        a, b = text.split("|", 1)
-        return a.strip(), b.strip()
-    words = text.split()
-    if len(words) <= SINGLE_LINE_WORDS:
-        return "", text  # câu rất ngắn: 1 dòng đậm
-    low = [re.sub(r"[^\w]", "", w.lower()) for w in words]
-    total = len(_plain(text))
-    in_marker, marked = False, []  # từ nằm trong *...* (không cắt ở giữa)
-    for wd in words:
-        starts = wd.startswith("*")
-        in_marker = in_marker or starts
-        marked.append(in_marker)
-        if wd.endswith("*") and (len(wd) > 1 or not starts):
-            in_marker = False
-    best, best_i = None, len(words) // 2
-    for i in range(2, len(words) - 1):  # mỗi dòng ít nhất 2 chữ
-        la, lb = len(_plain(" ".join(words[:i]))), len(_plain(" ".join(words[i:])))
-        score = abs(la - lb) / total  # càng cân càng tốt
-        if words[i - 1][-1] in ",.:;!?…":
-            score -= 0.25  # cắt ngay sau dấu câu
-        if low[i] in SPLIT_STRONG:
-            score -= 0.20  # dòng 2 mở bằng từ nối: "thì", "cứ", ...
-        elif low[i] in SPLIT_WEAK:
-            score -= 0.06
-        if low[i - 1] in GLUE_NEXT:
-            score += 0.30  # "mọi | ánh nhìn" -> xấu
-        if low[i] in GLUE_PREV:
-            score += 0.30  # "mẫu | này" -> xấu
-        if f"{low[i - 1]} {low[i]}" in COMPOUNDS:
-            score += 0.35  # không cắt giữa từ ghép: "ánh | nhìn", "tự | tin"
-        if marked[i] and marked[i - 1]:
-            score += 1.0  # không cắt giữa cụm *...*
-        cap_i = words[i][:1].isupper()
-        cap_prev = i - 1 > 0 and words[i - 1][:1].isupper()
-        cap_next = i + 1 < len(words) and words[i + 1][:1].isupper()
-        if cap_i and cap_prev:
-            score += 1.0  # không cắt giữa cụm viết hoa ("Vibe Gái Hàn")
-        elif cap_i and not cap_next:
-            score -= 0.45  # "nàng | Tự tin…", "thôi | Mà ai cũng…": chữ hoa đứng lẻ = mở vế mới
-        if best is None or score < best:
-            best, best_i = score, i
-    return " ".join(words[:best_i]), " ".join(words[best_i:])
-
-
-def clause_capital(text: str) -> bool:
-    """Có chữ Viết Hoa đứng lẻ giữa câu (sau nó còn >= 2 chữ) = người gõ muốn xuống dòng ở đó.
-    Cụm viết hoa liền nhau (tên riêng "Đà Lạt", "Vibe Gái Hàn") không tính."""
-    words = text.replace("*", "").split()
-    for k in range(1, len(words) - 1):
-        if (words[k][:1].isupper() and not words[k - 1][:1].isupper()
-                and not words[k + 1][:1].isupper()):
-            return True
-    return False
+    return [part.strip() for part in text.split("|") if dz.clean_text(part.replace("*", ""))]
 
 
 def accent_runs(line: str) -> list[tuple[str, bool]]:
@@ -444,26 +356,24 @@ def auto_hook() -> str:
     return hook
 
 
-def resolve_hook(args, clips: list[Path]) -> tuple[str, str]:
-    """Câu hook người dùng nhập. Để trống -> ("", ""): video không có chữ.
+def resolve_hook(args, clips: list[Path]) -> list[str]:
+    """Câu hook người dùng nhập (danh sách dòng). Để trống -> []: video không có chữ.
     --auto-hook: tự lấy từ hook.txt / tên file b1 / kho câu mẫu khi để trống."""
     if args.hook and dz.clean_text(args.hook):
-        return split_hook(args.hook)
+        return parse_hook(args.hook)
     if not args.auto_hook:
-        return "", ""
+        return []
     folder = clips[0].parent
     hook_file = folder / "hook.txt"
     if hook_file.exists():
         lines = [l.strip() for l in hook_file.read_text(encoding="utf-8-sig").splitlines() if l.strip()]
-        if len(lines) >= 2:
-            return split_hook(f"{lines[0]} | {lines[1]}")
         if lines:
-            return split_hook(lines[0])
+            return parse_hook(" | ".join(lines))  # mỗi dòng trong hook.txt là 1 dòng chữ
     b1 = hook_from_b1(folder)
     if b1:
         print(f"Lấy hook từ tên file b1: {b1}")
-        return split_hook(b1)
-    return split_hook(auto_hook())
+        return parse_hook(b1)
+    return parse_hook(auto_hook())
 
 
 def hook_from_b1(folder: Path) -> str | None:
@@ -511,10 +421,8 @@ def readability(overlay: Path, samples: list) -> float:
     return poor / total if total else 0.0
 
 
-def pick_readable_design(text, feats, style, line1, line2, w, h, head_top, safe_top, forced,
-                         base: Path, alpha_raw: Path, first_alpha, nframes: int, overlay: Path) -> dz.Design:
-    """Vẽ thử chữ tối VÀ chữ sáng lên đúng các khung hình đầu video, đo độ dễ đọc thật,
-    chọn hướng dễ đọc hơn; còn chỗ khó đọc thì thêm bóng đổ (mảnh / đậm + viền) cho chữ luôn nổi."""
+def collect_samples(base: Path, alpha_raw: Path, first_alpha, nframes: int, w: int, h: int) -> list:
+    """3 khung hình đầu (và mặt nạ người mẫu tương ứng) để đo độ dễ đọc của chữ."""
     sw = 540
     sh = round(h * sw / w) // 2 * 2
     ids = sorted({0, nframes // 3, (2 * nframes) // 3})
@@ -532,14 +440,26 @@ def pick_readable_design(text, feats, style, line1, line2, w, h, head_top, safe_
             if len(buf) == aw * ah:
                 person = np.asarray(Image.fromarray(np.frombuffer(buf, np.uint8).reshape(ah, aw)).resize((sw, sh)))
         samples.append((frames[k], person))
+    return samples
+
+
+def pick_readable_design(lines: list[str], feats, style, w, h, head_top, safe_top,
+                         samples: list, overlay: Path) -> dz.Design:
+    """Vẽ thử chữ tối VÀ chữ sáng lên khung hình thật, đo độ dễ đọc, chọn hướng dễ đọc hơn;
+    còn chỗ khó đọc thì thêm bóng đổ (mảnh / đậm + viền) cho chữ luôn nổi."""
+    text = " ".join(lines)
     auto = dz.choose_design(text, feats, style)
+    if auto.preset.deco == "pill":  # chữ đậm nằm trên khối màu: tự nổi; chỉ dòng nhỏ cần bóng mảnh
+        auto.shadow_level = 1 if len(lines) > 1 else 0
+        auto.reasons.append("Kiểu nhãn nền: chữ đậm nằm trên khối màu bo tròn")
+        return auto
     results = []
     for dark in (auto.dark_text, not auto.dark_text):  # hướng tự chọn trước (thắng khi bằng điểm)
         d = auto if dark == auto.dark_text else dz.choose_design(text, feats, style, dark)
-        render_overlay(line1, line2, w, h, overlay, head_top, safe_top, d, allow_single=not forced)
+        render_overlay(lines, w, h, overlay, head_top, safe_top, d)
         results.append((readability(overlay, samples), d))
     poor, design = min(results, key=lambda r: r[0])
-    other = [p for p, d in results if d is not design][0]
+    other = [q for q, d in results if d is not design][0]
     design.shadow_level = 2 if poor > READ_STRONG else (1 if poor > READ_SOFT else 0)
     hint = {0: "không cần bóng", 1: "thêm bóng mảnh", 2: "thêm bóng đậm + viền mảnh"}[design.shadow_level]
     design.reasons.append(f"Đo trên khung hình: chữ {'tối' if design.dark_text else 'sáng'} khó đọc {poor:.0%} nét "
@@ -547,23 +467,10 @@ def pick_readable_design(text, feats, style, line1, line2, w, h, head_top, safe_
     return design
 
 
-def fits_one_line(text: str, design: dz.Design, w: int, scale: float = 1.0) -> bool:
-    """Cả câu nằm vừa 1 dòng đậm ở cỡ chữ >= SINGLE_MIN_SCALE cỡ chuẩn?"""
-    spec = design.preset.line2
-    plain = text.replace("*", "")
-    plain = plain.upper() if spec.upper else plain
-    real, plain, _ = dz.glyph_safe(spec, plain)
-    size = round(w * real.size * scale)
-    font = ImageFont.truetype(str(dz.FONTS / real.file), size)
-    if real.variation:
-        font.set_variation_by_name(real.variation)
-    return font.getlength(plain) * SINGLE_MIN_SCALE <= w * MAX_TEXT_W
-
-
-def render_overlay(line1: str, line2: str, w: int, h: int, out: Path,
-                   head_top: int | None, safe_top: float, design: dz.Design,
-                   scale: float = 1.0, allow_single: bool = True) -> None:
-    """Vẽ hook: dòng nhỏ (line1, có thể rỗng -> chỉ 1 dòng) + dòng đậm (line2) có cụm tô màu nhấn.
+def render_overlay(lines: list[str], w: int, h: int, out: Path,
+                   head_top: int | None, safe_top: float, design: dz.Design, scale: float = 1.0) -> None:
+    """Vẽ hook. 1 dòng -> dòng đậm; nhiều dòng (dấu |) -> dòng đầu nhỏ, các dòng sau đậm.
+    Mỗi dòng tự thu nhỏ cho vừa khung (không tự xuống dòng). Có 1 cụm tô màu nhấn trong dòng đậm.
 
     Vùng an toàn luôn được ưu tiên: khối chữ không bao giờ lên trên vạch safe_top
     (tai thỏ / Dynamic Island / thanh tiêu đề Reels). Vừa khoảng trống trên đầu thì căn giữa
@@ -571,36 +478,46 @@ def render_overlay(line1: str, line2: str, w: int, h: int, out: Path,
     """
     p = design.preset
     max_w = int(w * MAX_TEXT_W)
-    if allow_single and line1.strip() and fits_one_line(f"{line1} {line2}", design, w, scale):
-        line1, line2 = "", f"{line1} {line2}"  # câu không dài: giữ 1 dòng đậm (cỡ chữ tự thu vừa khung)
+    pill = p.deco == "pill"
+    bold = lines if len(lines) == 1 else lines[1:]
+    marked = any("*" in ln for ln in bold)  # có *đánh dấu* thì chỉ tô đúng chỗ đánh dấu
 
-    def prep(spec, text):  # font thật sự dùng (dự phòng nếu thiếu glyph) + các đoạn chữ đã an toàn
-        runs = accent_runs(text) if spec is p.line2 else [(text.replace("*", ""), False)]
+    def prep(spec, text, is_bold, auto_accent):  # font thật sự dùng + các đoạn chữ đã an toàn
+        if is_bold and ("*" in text or auto_accent) and not pill:
+            runs = accent_runs(text)
+        else:
+            runs = [(text.replace("*", ""), False)]
         if spec.upper:
             runs = [(r.upper(), acc) for r, acc in runs]
         real, _, notes = dz.glyph_safe(spec, "".join(r for r, _ in runs))
         for note in notes:
             print(f"[font] {note}")
         runs = [(dz.glyph_safe(real, r)[1] if r.strip() else r, acc) for r, acc in runs]
-        font = load_font(real, round(w * real.size * scale), "".join(r for r, _ in runs), max_w)
+        width = max_w - (round(w * real.size * scale * 0.9) if pill and is_bold else 0)  # chừa lề khối màu
+        font = load_font(real, round(w * real.size * scale), "".join(r for r, _ in runs), width)
         return font, runs
 
-    lines = []  # (font, runs, màu thường)
-    if line1.strip():
-        lines.append((*prep(p.line1, line1), design.color1))
-    lines.append((*prep(p.line2, line2), design.color2))
+    entries = []  # (font, runs, màu thường, có khối màu)
+    for k, text in enumerate(lines):
+        is_bold = len(lines) == 1 or k > 0
+        spec = p.line2 if is_bold else p.line1
+        auto_accent = is_bold and not marked and text is bold[-1]  # tự tô 1 cụm ở dòng đậm cuối
+        font, runs = prep(spec, text, is_bold, auto_accent)
+        entries.append((font, runs, design.color2 if is_bold else design.color1, pill and is_bold))
 
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    # vị trí tâm từng dòng (dòng đầu tại 0), khoảng cách tâm >= 1.25 line-height
+    # vị trí tâm từng dòng (dòng đầu tại 0), khoảng cách tâm >= 1.25 line-height (+ lề khối màu)
     centers = [0]
-    for (fa, _, _), (fb, _, _) in zip(lines, lines[1:]):
-        centers.append(centers[-1] + round((fa.size + fb.size) / 2 * LINE_GAP))
+    for (fa, _, _, pa), (fb, _, _, pb) in zip(entries, entries[1:]):
+        extra = round(0.45 * max(fa.size, fb.size)) if (pa or pb) else 0
+        centers.append(centers[-1] + round((fa.size + fb.size) / 2 * LINE_GAP) + extra)
     tops, bots = [], []
-    for (font, runs, _), cy in zip(lines, centers):
+    for (font, runs, _, has_pill), cy in zip(entries, centers):
         box = draw.textbbox((w / 2, cy), "".join(r for r, _ in runs), font=font, anchor="mm")
-        tops.append(box[1])
-        bots.append(box[3])
+        pad = round(font.size * 0.22) if has_pill else 0
+        tops.append(box[1] - pad)
+        bots.append(box[3] + pad)
     block_top, block_bot = min(tops), max(bots)
     safe_px = round(h * safe_top)
     if head_top is None or head_top - safe_px <= 0:
@@ -609,28 +526,111 @@ def render_overlay(line1: str, line2: str, w: int, h: int, out: Path,
         y0 = round((safe_px + head_top) / 2 - (block_top + block_bot) / 2)
     y0 = max(y0, safe_px - block_top)
 
-    def draw_lines(target, offset=0.0, fill=None, stroke=0):
+    # kiểu nhãn nền: khối màu nhấn bo tròn sau dòng đậm, chữ trắng / tối tuỳ độ sáng khối
+    pill_fill = design.accent
+    pill_text = (255, 255, 255, 255) if dz.contrast(1.0, float(dz.luminance(np.array(pill_fill[:3])))) >= \
+        dz.contrast(0.01, float(dz.luminance(np.array(pill_fill[:3])))) else (24, 20, 18, 255)
+
+    def draw_lines(target, offset=0.0, fill=None, stroke=0, skip_pill=False):
         d = ImageDraw.Draw(target)
-        for (font, runs, color), cy in zip(lines, centers):
+        for (font, runs, color, has_pill), cy in zip(entries, centers):
+            if has_pill and skip_pill:
+                continue
             text = "".join(r for r, _ in runs)
             ascent, descent = font.getmetrics()
             baseline = y0 + cy + (ascent - descent) / 2 + offset  # cùng đường chân chữ với anchor "mm"
             x = w / 2 - font.getlength(text) / 2 + offset
+            if has_pill and fill is None:
+                l, t, r_, b_ = d.textbbox((x, baseline), text, font=font, anchor="ls")
+                px, py = round(font.size * 0.42), round(font.size * 0.22)
+                d.rounded_rectangle((l - px, t - py, r_ + px, b_ + py), radius=round(min(font.size * 0.45,
+                                    (b_ - t + 2 * py) / 2)), fill=pill_fill)
             for r, acc in runs:  # vẽ từng đoạn trên cùng 1 đường chân chữ, đoạn nhấn đổi màu
-                d.text((x, baseline), r, font=font, fill=fill or (design.accent if acc else color), anchor="ls",
+                ink = fill or (pill_text if has_pill else (design.accent if acc else color))
+                d.text((x, baseline), r, font=font, fill=ink, anchor="ls",
                        stroke_width=stroke, stroke_fill=fill if stroke else None)
                 x += font.getlength(r)
 
     if design.shadow and design.shadow_level:  # nền lẫn lộn: bóng sát chữ (không loang ra mặt người mẫu)
-        size = lines[-1][0].size
+        size = entries[-1][0].size
         strong = design.shadow_level >= 2
         sh = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         color = design.shadow[:3] + ((215 if strong else 140),)
         draw_lines(sh, offset=max(1.0, size * (0.02 if strong else 0.025)), fill=color,
-                   stroke=max(1, round(size * 0.035)) if strong else 0)
+                   stroke=max(1, round(size * 0.035)) if strong else 0, skip_pill=True)
         img = Image.alpha_composite(img, sh.filter(ImageFilter.GaussianBlur(max(1.0, size * (0.025 if strong else 0.03)))))
     draw_lines(img)
     img.save(out)
+
+
+def first_frame(video: Path, w: int, h: int) -> np.ndarray | None:
+    """Khung hình đầu (chỉ giải mã 1 frame, không đọc hết clip)."""
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", str(video), "-an", "-frames:v", "1",
+                          "-vf", f"scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}",
+                          "-f", "rawvideo", "-pix_fmt", "rgb24", "-"], capture_output=True,
+                         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0).stdout  # app pythonw: không nháy cửa sổ đen
+    return np.frombuffer(raw[:w * h * 3], np.uint8).reshape(h, w, 3) if len(raw) >= w * h * 3 else None
+
+
+def preview_image(clip: Path | None, hook: str, style: str | None, width: int = 540, rvm=None,
+                  cache: dict | None = None) -> Image.Image:
+    """Ảnh xem trước hook trên khung hình đầu của clip, dùng đúng logic chọn màu / đo độ dễ đọc như lúc ghép.
+    Có rvm: tách người mẫu trên khung hình này -> đúng vị trí đầu và người mẫu đè lên chữ như video thật.
+    cache (dict): giữ khung hình + vùng người theo clip, gõ chữ / đổi mẫu không phải tách nền lại."""
+    w, h = width, round(width * 16 / 9) // 2 * 2
+    key = (str(clip), w, rvm is not None)
+    frame = person = None
+    if cache is not None and key in cache:
+        frame, person = cache[key]
+    elif clip is not None:
+        try:
+            frame = first_frame(clip, w, h)
+        except Exception:
+            frame = None
+        if frame is not None and rvm is not None:
+            try:
+                person = person_mask(rvm, np.ascontiguousarray(frame))
+            except Exception:
+                person = None
+        if frame is not None and cache is not None:
+            cache[key] = (frame, person)
+    if frame is None:  # chưa chọn clip: nền be nhạt
+        grad = np.linspace(236, 214, h, dtype=np.float32)[:, None, None]
+        frame = np.broadcast_to(grad * np.array([[[1.0, 0.97, 0.93]]], np.float32), (h, w, 3)).astype(np.uint8)
+        person = None
+    frame = np.ascontiguousarray(frame)
+    lines = parse_hook(hook)
+    img = Image.fromarray(frame).convert("RGBA")
+    if not lines:
+        return img.convert("RGB")
+    head_top = int(h * 0.27)  # không tách nền: ước lượng đầu người mẫu
+    y0 = int(h * 0.08)
+    if person is not None:
+        rows = np.nonzero((person > 0.5).sum(axis=1) > w * 0.005)[0]
+        head_top = int(rows[0]) if len(rows) else None
+    y1 = max(head_top or int(h * 0.27), y0 + 8)
+    band = frame[y0:y1]
+    if person is not None:
+        band = band[person[y0:y1] < 0.3]
+        rows = np.nonzero((person > 0.6).any(axis=1))[0]
+        body = np.zeros(person.shape, bool)
+        if len(rows) > 10:
+            body[rows[0] + int((rows[-1] - rows[0]) * 0.22):rows[-1]] = True
+        outfit = frame[(person > 0.6) & body]
+    else:
+        outfit = frame[int(h * 0.45):int(h * 0.85), int(w * 0.25):int(w * 0.75)].reshape(-1, 3)
+    feats = dz.analyze([outfit, outfit, outfit], band.reshape(-1, 3))
+    samples = [(frame, None if person is None else (person * 255).astype(np.uint8))]
+    with tempfile.TemporaryDirectory() as tmp:
+        ov = Path(tmp) / "ov.png"
+        design = pick_readable_design(lines, feats, style, w, h, head_top, 0.08, samples, ov)
+        render_overlay(lines, w, h, ov, head_top, 0.08, design)
+        img.alpha_composite(Image.open(ov))
+    if person is not None:  # người mẫu nằm trên chữ, giống video thật
+        fg = Image.fromarray(frame).convert("RGBA")
+        fg.putalpha(Image.fromarray((np.clip(person, 0, 1) * 255).astype(np.uint8)))
+        img.alpha_composite(fg)
+    return img.convert("RGB")
 
 
 # Bản cuối dùng x264 "veryfast": trên Xeon E5 v2 nhanh ~2x so với "fast", SSIM 0.994 vs 0.996 (khó thấy).
@@ -869,7 +869,7 @@ def matte_video(rvm, base: Path, w: int, h: int, fps: int, nframes: int,
     return (round(float(np.median(tops)) * h / mh) if tops else None), written, first_alpha
 
 
-def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
+def build(clips: list[Path], lines: list[str], out: Path, args) -> None:
     prof = devmod.load()
     if prof is None:  # vd vừa cập nhật bằng nút Cập nhật: kiểm tra thiết bị 1 lần (~10 giây)
         print("Kiểm tra GPU/CPU lần đầu để chọn cấu hình hợp máy ...")
@@ -898,7 +898,7 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
     w, h = w - w % 2, h - h % 2
     # Nạp torch + model tách nền và "khởi động" nó song song trong lúc Whisper chạy / ghép clip:
     # TorchScript mất vài giây tối ưu ở những lần gọi đầu, làm trước thì lúc tách nền thật đã sẵn sàng.
-    has_text = bool(line2.strip())
+    has_text = bool(lines)
     rvm_box: dict = {}
 
     def preload():
@@ -963,13 +963,10 @@ def build(clips: list[Path], line1: str, line2: str, out: Path, args) -> None:
 
         print("Phân tích clip để thiết kế chữ...")
         feats = analyze_clips(rvm, base, infos, fps, w, h, head_top, args.safe_top, hook_dur)
-        # giữ đúng 2 dòng khi người dùng tự chia bằng |, hoặc viết hoa đầu vế 2 ("…cuối tuần Diện ngay…")
-        forced = "|" in (args.hook or "") or clause_capital(f"{line1} {line2}")
-        design = pick_readable_design(f"{line1} {line2}", feats, args.style, line1, line2, w, h, head_top,
-                                      args.safe_top, forced, base, alpha, first_alpha, nframes, overlay)
+        samples = collect_samples(base, alpha, first_alpha, nframes, w, h)
+        design = pick_readable_design(lines, feats, args.style, w, h, head_top, args.safe_top, samples, overlay)
         print(design.summary())
-        render = lambda sc: render_overlay(line1, line2, w, h, overlay, head_top, args.safe_top, design, sc,
-                                           allow_single=not forced)
+        render = lambda sc: render_overlay(lines, w, h, overlay, head_top, args.safe_top, design, sc)
 
         def coverage() -> float:
             text_a = np.asarray(Image.open(overlay).getchannel("A").resize(first_alpha.shape[::-1])) > 128
@@ -1076,7 +1073,7 @@ def main() -> None:
         sys.exit(f"Thiếu model tách nền: {RVM_MODEL}\nTải tại: {RVM_URL}")
 
     clips = collect_clips(args.inputs)
-    line1, line2 = resolve_hook(args, clips)
+    lines = resolve_hook(args, clips)
     if args.output:
         out = Path(args.output)
     else:
@@ -1090,11 +1087,11 @@ def main() -> None:
     out.parent.mkdir(parents=True, exist_ok=True)
 
     print(f"Ghép {len(clips)} clip:", *[f"  - {c.name}" for c in clips], sep="\n")
-    if not line2:
+    if not lines:
         print("Không có câu hook -> video không có chữ")
     else:
-        print(f"Hook: {line1}  /  {line2}" if line1 else f"Hook (1 dòng): {line2}")
-    build(clips, line1, line2, out, args)
+        print(f"Hook ({len(lines)} dòng): " + "  /  ".join(lines))
+    build(clips, lines, out, args)
     print(f"Xong: {out}")
 
 

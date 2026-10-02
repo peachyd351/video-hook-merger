@@ -33,8 +33,10 @@ class FontSpec:
 class Preset:
     name: str
     label: str
-    line1: FontSpec
-    line2: FontSpec
+    line1: FontSpec  # dòng nhỏ (dòng đầu khi có dấu |)
+    line2: FontSpec  # dòng đậm (câu 1 dòng, hoặc các dòng sau dấu |)
+    deco: str = "none"  # "pill": chữ đậm nằm trên khối màu bo tròn (nhãn nền)
+    auto: bool = True  # được chọn trong chế độ "Tự động"; mẫu mới chỉ chọn tay (xem trước trong app)
 
 
 # Cỡ chữ đo theo video mẫu "Nàng mặc đẹp" (dòng 1 nhỏ nghiêng mảnh, dòng 2 serif Bold ~75% bề ngang).
@@ -60,6 +62,37 @@ PRESETS = {
     "ca_tinh": Preset("ca_tinh", "Cá tính (màu nổi, street)",
                       FontSpec("BeVietnamPro-MediumItalic.ttf", 0.052),
                       FontSpec("UTM Bebas.ttf", 0.112, upper=True)),
+    # ---- mẫu thêm (chọn tay; font Google Fonts OFL, đủ tiếng Việt) ----
+    "hien_dai_dam": Preset("hien_dai_dam", "Hiện đại đậm (Montserrat)",
+                           FontSpec("Montserrat.ttf", 0.050, "Light"),
+                           FontSpec("Montserrat.ttf", 0.064, "ExtraBold"), auto=False),
+    "tre_trung": Preset("tre_trung", "Trẻ trung (Lexend)",
+                        FontSpec("Lexend.ttf", 0.052, "Light"),
+                        FontSpec("Lexend.ttf", 0.066, "Bold"), auto=False),
+    "manh_me": Preset("manh_me", "Mạnh mẽ chữ hoa (Anton)",
+                      FontSpec("Oswald.ttf", 0.056, "Light"),
+                      FontSpec("Anton-Regular.ttf", 0.098, upper=True), auto=False),
+    "co_dien": Preset("co_dien", "Cổ điển (Lora)",
+                      FontSpec("Lora-Italic.ttf", 0.056, "Italic"),
+                      FontSpec("Lora.ttf", 0.072, "Bold"), auto=False),
+    "thu_phap": Preset("thu_phap", "Thư pháp (Great Vibes + Cormorant)",
+                       FontSpec("GreatVibes-Regular.ttf", 0.084),
+                       FontSpec("CormorantGaramond.ttf", 0.086, "Bold"), auto=False),
+    "mem_mai": Preset("mem_mai", "Mềm mại (Dancing Script)",
+                      FontSpec("DancingScript.ttf", 0.078, "Bold"),
+                      FontSpec("Lora.ttf", 0.068, "SemiBold"), auto=False),
+    "vui_tuoi": Preset("vui_tuoi", "Vui tươi (Pacifico + Baloo)",
+                       FontSpec("Pacifico-Regular.ttf", 0.060),
+                       FontSpec("Baloo2.ttf", 0.078, "ExtraBold"), auto=False),
+    "thanh_manh": Preset("thanh_manh", "Thanh mảnh (Josefin Sans)",
+                         FontSpec("JosefinSans.ttf", 0.050, "Light", upper=True),
+                         FontSpec("JosefinSans.ttf", 0.072, "Bold"), auto=False),
+    "nhan_nen": Preset("nhan_nen", "Nhãn nền màu (khối bo tròn)",
+                       FontSpec("BeVietnamPro-LightItalic.ttf", 0.050),
+                       FontSpec("BeVietnamPro-ExtraBold.ttf", 0.060), deco="pill", auto=False),
+    "nhan_nen_hoa": Preset("nhan_nen_hoa", "Nhãn nền chữ hoa (Anton)",
+                           FontSpec("Oswald.ttf", 0.054, "Light"),
+                           FontSpec("Anton-Regular.ttf", 0.088, upper=True), deco="pill", auto=False),
 }
 
 KEYWORDS = {
@@ -282,7 +315,7 @@ class Design:
 
 def score_styles(text: str, f: Features) -> tuple[dict, list]:
     t = unicodedata.normalize("NFC", text.lower())
-    score = {k: 0.0 for k in PRESETS}
+    score = {k: 0.0 for k, p in PRESETS.items() if p.auto}
     score["sang_trong"] += 0.5  # phong cách gốc của kênh
     reasons = []
     for style, words in KEYWORDS.items():

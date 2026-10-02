@@ -1,6 +1,6 @@
 ---
 name: video-hook-merger
-description: Ghép 3 clip dọc (thời trang, người mẫu nói) thành 1 video Reels, cắt khoảng lặng và jump cut, tăng tốc hình + giọng, tự thiết kế hook text 2 dòng tiếng Việt nằm sau người mẫu. Dùng khi người dùng đưa 3 clip (hoặc 1 thư mục clip) và một câu hook, hoặc bảo "ghép video + chèn text" theo kiểu "Nàng mặc đẹp".
+description: Ghép 3 clip dọc (thời trang, người mẫu nói) thành 1 video Reels, cắt khoảng lặng và jump cut, tăng tốc hình + giọng, tự thiết kế hook text tiếng Việt (chỉ xuống dòng ở dấu |) nằm sau người mẫu. Dùng khi người dùng đưa 3 clip (hoặc 1 thư mục clip) và một câu hook, hoặc bảo "ghép video + chèn text" theo kiểu "Nàng mặc đẹp".
 ---
 
 # Video Hook Merger
@@ -27,7 +27,7 @@ Code nằm trong thư mục `app\` (chứa file này); thư mục ngoài chỉ c
 
 ## Quy tắc
 
-- Không đổi form chữ mặc định (dòng 1 nghiêng mảnh nhỏ, dòng 2 serif Bold) trừ khi người dùng yêu cầu; dùng `--style` để ép phong cách.
+- Không đổi form chữ mặc định (dòng 1 nghiêng mảnh nhỏ, dòng 2 serif Bold) trừ khi người dùng yêu cầu; dùng `--style` để ép phong cách. Hook chỉ xuống dòng ở dấu `|` — giữ nguyên câu người dùng nhập, không tự ngắt dòng.
 - Chữ mặc định nằm SAU người mẫu (tóc được đè lên chữ). Chỉ dùng `--text-layer auto/front` khi người dùng muốn thumbnail đọc trọn chữ.
 - Vạch an toàn trên cùng mặc định 8% (tai thỏ / Dynamic Island). Chỉ giảm `--safe-top` khi người dùng yêu cầu.
 - Không đăng/upload video đi đâu nếu người dùng không yêu cầu.

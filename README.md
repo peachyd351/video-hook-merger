@@ -14,8 +14,9 @@ tự thiết kế chữ hook tiếng Việt nằm sau người mẫu.
 Bấm đúp shortcut **Video Hook Merger** (hoặc `Video Hook Merger.bat`):
 
 1. **Chọn clip:** "Thêm clip…" hoặc "Chọn thư mục…"; dùng ▲/▼ để đổi thứ tự.
-2. **Câu hook:** gõ câu hook. **Để trống thì video không có chữ** (chỉ ghép + cắt + tăng tốc, nhanh hơn). Câu ngắn tự thành 1 dòng đậm; câu dài được chia 2 dòng (dòng nhỏ nghiêng + dòng đậm). Dấu `|` để tự chia dòng, `*…*` để chọn chữ tô màu nhấn.
-3. **Tuỳ chọn:** tốc độ (mặc định 1.15), phong cách chữ, đồng bộ tốc độ nói, cắt khoảng lặng, **cân bằng âm lượng giọng nói** (đo độ to từng clip rồi chỉnh cho bằng nhau, nén nhẹ cho đều tiếng giữa các câu, đưa cả video về -14 LUFS như chuẩn Reels/TikTok). Mục **Nâng cao ▸** có thời gian hiện chữ và nơi lưu video.
+2. **Câu hook:** gõ **đủ cả câu hook**. Tool **chỉ xuống dòng ở dấu `|`**, không tự ngắt: không có `|` thì cả câu là 1 dòng đậm (dài quá thì chữ tự nhỏ lại cho vừa); có `|` thì dòng đầu nhỏ, các dòng sau đậm. Ví dụ `Không biết phối đồ đi tiệc|Cứ mặc nguyên *set này*`. `*…*` để chọn chữ tô màu nhấn. **Để trống thì video không có chữ** (chỉ ghép + cắt + tăng tốc, nhanh hơn).
+   Khung **Xem trước** bên phải hiện ngay chữ hook trên cảnh đầu của clip 1 (người mẫu đè lên chữ đúng như video thật), tự vẽ lại khi gõ chữ, đổi kiểu chữ hay đổi clip — chọn được mẫu ưng ý rồi mới bấm Ghép.
+3. **Tuỳ chọn:** tốc độ (mặc định 1.15), kiểu chữ (**Tự động** hoặc chọn 1 trong 17 mẫu: sang trọng, tạp chí, lãng mạn, dễ thương, hiện đại, vibe Hàn, cá tính, Montserrat, Lexend, Anton chữ hoa, Lora cổ điển, thư pháp, Dancing Script, Pacifico vui tươi, Josefin thanh mảnh, nhãn nền màu bo tròn…), đồng bộ tốc độ nói, cắt khoảng lặng, **cân bằng âm lượng giọng nói** (đo độ to từng clip rồi chỉnh cho bằng nhau, nén nhẹ cho đều tiếng giữa các câu, đưa cả video về -14 LUFS như chuẩn Reels/TikTok). Mục **Nâng cao ▸** có thời gian hiện chữ và nơi lưu video.
 4. Bấm **Ghép video**. Xong thì bấm **Mở video** / **Mở thư mục**. Video được lưu ngay trong thư mục chứa clip. Có lỗi thì bấm **Chi tiết** để xem nhật ký.
 
 ## Máy yếu / không có card NVIDIA

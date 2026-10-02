@@ -40,7 +40,7 @@ Bấm đúp shortcut **"Video Hook Merger"** trên Desktop (hoặc `Video Hook M
 
 1. **Chọn clip:** bấm "Thêm clip…" (giữ Ctrl để chọn nhiều) hoặc "Chọn thư mục…". Dùng ▲/▼ để đổi thứ tự.
    Kéo thả clip hoặc thư mục lên shortcut / `Video Hook Merger.bat` thì clip được điền sẵn.
-2. **Câu hook:** gõ câu hook. Để trống thì tool tự lấy từ `hook.txt` → tên file `b1…` → kho câu mẫu. Dùng `|` để tự chia 2 dòng.
+2. **Câu hook:** gõ đủ câu hook; chỉ xuống dòng ở dấu `|`. Để trống = video không có chữ. Khung **Xem trước** (cột phải) vẽ hook lên khung hình đầu clip 1 bằng đúng logic lúc ghép (chọn màu, đo độ dễ đọc, tách người mẫu trên CPU để người mẫu đè lên chữ), tự cập nhật khi gõ / đổi kiểu chữ / đổi clip.
 3. **Tuỳ chọn:** tốc độ (mặc định 1.15), đồng bộ tốc độ nói, cắt khoảng lặng, phong cách chữ, thời gian hiện chữ. Tool nhớ lựa chọn cho lần sau.
 4. **Lưu vào:** tự điền `<tên thư mục>_hook.mp4` cạnh thư mục clip; bấm "Chọn…" để đổi.
 
@@ -62,8 +62,8 @@ Giải nén bản mới, **chép toàn bộ file trong đó đè lên thư mục
   - Giữa câu (jump cut): khoảng ngừng dài hơn 0.45s được rút còn 0.2s.
 - **Tốc độ:** hình và tiếng cắt cùng mốc, tăng tốc cùng hệ số, nên khẩu hình khớp. Giọng giữ nguyên cao độ, không bị the thé. Mỗi đoạn được ép đúng số nguyên frame, nên hình và tiếng không lệch nhau.
 - **Đồng bộ tốc độ nói giữa 3 clip:** Whisper small đếm số chữ trong từng clip. Tiếng Việt mỗi chữ là một âm tiết, nên số chữ chia cho thời gian nói ra đúng tốc độ nói, và nhạc nền không làm sai kết quả. Tool lấy mức giữa của 3 clip làm chuẩn: clip nói chậm được tăng tốc thêm, clip nói nhanh được giảm bớt, quanh mức `--speed` và lệch tối đa ±12%. Chênh dưới 3% thì giữ nguyên. Log in ra số chữ/giây và tốc độ từng clip. Whisper chạy trong tiến trình riêng, GPU trước rồi CPU; máy chỉ có CPU mất thêm khoảng 40 giây mỗi video. Tắt bằng `--no-sync-speed`.
-- **Chữ:** câu vừa 1 dòng (đo bằng font thật, cỡ chữ ≥ 72% cỡ chuẩn) thì giữ 1 dòng đậm; câu dài chia 2 dòng tại chỗ cân đối và tự nhiên (sau dấu câu, trước "thì/cứ/là…", trước chữ Viết Hoa đứng lẻ giữa câu, không cắt giữa từ ghép hay cụm Viết Hoa như tên riêng). Dấu `|` hoặc viết hoa đầu vế 2 ("…cuối tuần Diện ngay…") thì luôn giữ 2 dòng. Dòng 1 nhỏ nghiêng, dòng 2 đậm có **một cụm tô màu nhấn**: `*đánh dấu*` > cụm Viết Hoa giữa câu > từ khoá thời trang > 2 chữ cuối. Màu nhấn lấy từ trang phục (kể cả pastel, đậm lên cho rõ), trang phục trung tính thì lấy bảng màu hợp nền (nền sáng: màu đậm tương phản; nền tối: pastel cùng tông). **Màu chữ chọn bằng đo thật:** vẽ thử chữ tối và chữ sáng lên các khung hình đầu, đếm % nét chữ có tương phản < 3:1 với đúng điểm nền phía sau (bỏ phần người mẫu che), chọn hướng dễ đọc hơn; còn > 2% nét khó đọc thì thêm bóng mảnh, > 12% thì bóng đậm + viền mảnh. Chữ có sắc độ theo tông nền, không ép về đen / trắng tuyền. Chữ hiện suốt cảnh đầu, căn giữa khoảng trống từ vạch an toàn (8%, tránh tai thỏ/Dynamic Island) tới đỉnh đầu người mẫu, và nằm **sau** người mẫu nên tóc đè lên chữ.
-- **Tự thiết kế font + màu** (offline): chấm điểm 6 phong cách theo từ khoá trong câu hook và màu trang phục ở cả 3 clip; màu chữ lấy theo tông nền và đạt tương phản ≥ 4.5:1. Không dùng hiệu ứng: chỉ font, màu, vị trí.
+- **Chữ:** tool **không tự ngắt dòng**: chỉ xuống dòng ở dấu `|` (bao nhiêu `|` thì bấy nhiêu dòng). Không có `|` = 1 dòng đậm; có `|` = dòng đầu nhỏ, các dòng sau đậm. Dòng nào dài quá khổ thì tự thu nhỏ cỡ chữ cho vừa. **Cụm tô màu nhấn:** `*đánh dấu*` nếu có, không thì tự chọn trên dòng đậm cuối (cụm Viết Hoa giữa câu > từ khoá thời trang > 2 chữ cuối). Màu nhấn lấy từ trang phục (kể cả pastel, đậm lên cho rõ), trang phục trung tính thì lấy bảng màu hợp nền (nền sáng: màu đậm tương phản; nền tối: pastel cùng tông). **Màu chữ chọn bằng đo thật:** vẽ thử chữ tối và chữ sáng lên các khung hình đầu, đếm % nét chữ có tương phản < 3:1 với đúng điểm nền phía sau (bỏ phần người mẫu che), chọn hướng dễ đọc hơn; còn > 2% nét khó đọc thì thêm bóng mảnh, > 12% thì bóng đậm + viền mảnh. Chữ có sắc độ theo tông nền, không ép về đen / trắng tuyền. Chữ hiện suốt cảnh đầu, căn giữa khoảng trống từ vạch an toàn (8%, tránh tai thỏ/Dynamic Island) tới đỉnh đầu người mẫu, và nằm **sau** người mẫu nên tóc đè lên chữ.
+- **Tự thiết kế font + màu** (offline): chế độ Tự động chấm điểm 7 phong cách gốc theo từ khoá trong câu hook và màu trang phục ở cả 3 clip; màu chữ lấy theo tông nền và đạt tương phản ≥ 4.5:1. Không dùng hiệu ứng: chỉ font, màu, vị trí.
 - **An toàn tiếng Việt:** cả 10 font đều đủ 146 ký tự có dấu. Text được chuẩn hoá NFC; emoji và ký tự vô hình bị bỏ; font thiếu ký tự thì tự đổi sang font dự phòng.
 
 | Phong cách | Dòng 1 | Dòng 2 | Cụm tô màu nhấn |
@@ -75,6 +75,18 @@ Giải nén bản mới, **chép toàn bộ file trong đó đè lên thư mục
 | `hien_dai` | Be Vietnam Pro Light | Be Vietnam Pro ExtraBold | có |
 | `vibe_han` | Be Vietnam Pro Light Italic | Be Vietnam Pro ExtraBold | có |
 | `ca_tinh` | Be Vietnam Pro Medium Italic | UTM Bebas (IN HOA) | có |
+| `hien_dai_dam` | Montserrat Light | Montserrat ExtraBold | có |
+| `tre_trung` | Lexend Light | Lexend Bold | có |
+| `manh_me` | Oswald Light | Anton (IN HOA) | có |
+| `co_dien` | Lora Italic | Lora Bold | có |
+| `thu_phap` | Great Vibes | Cormorant Garamond Bold | có |
+| `mem_mai` | Dancing Script Bold | Lora SemiBold | có |
+| `vui_tuoi` | Pacifico | Baloo 2 ExtraBold | có |
+| `thanh_manh` | Josefin Sans Light (IN HOA) | Josefin Sans Bold | có |
+| `nhan_nen` | Be Vietnam Pro Light Italic | Be Vietnam Pro ExtraBold trên khối màu bo tròn | khối màu |
+| `nhan_nen_hoa` | Oswald Light | Anton (IN HOA) trên khối màu bo tròn | khối màu |
+
+10 mẫu sau (từ `hien_dai_dam`) chỉ dùng khi chọn tay; font Google Fonts (OFL), đã kiểm tra đủ dấu tiếng Việt.
 
 ## Dòng lệnh
 
@@ -85,13 +97,13 @@ bin\hook-merge.bat 1.mp4 2.mp4 3.mp4 -o out.mp4 --hook "Hẹn hò cuối tuần 
 
 | Tuỳ chọn | Ý nghĩa |
 |---|---|
-| `--hook "câu"` | Câu hook (`\|` để tự chia 2 dòng). Không có `--hook` = video không có chữ |
+| `--hook "câu"` | Câu hook đầy đủ; chỉ xuống dòng ở `\|`. Không có `--hook` = video không có chữ |
 | `--auto-hook` | Không có `--hook` thì tự lấy từ `hook.txt` → tên file `b1...` → `hooks.txt` |
 | `--speed 1.15` | Tốc độ hình + giọng, từ 0.5 đến 2.0 (`1.1` = tốc độ video mẫu, `1` = giữ nguyên); là mức chung, từng clip lệch tối đa ±12% để nhịp nói đều |
 | `--no-sync-speed` | Không đồng bộ tốc độ nói: cả 3 clip dùng đúng `--speed` |
 | `--no-level` | Không cân bằng âm lượng giọng nói (mặc định: mỗi clip đưa về -18 LUFS, nén nhẹ 3:1, bản cuối -14 LUFS, chặn đỉnh -1.5 dB) |
 | `--ask` | Hỏi hook và tốc độ trong cửa sổ (Video Hook Merger.bat dùng tuỳ chọn này) |
-| `--style` | Ép phong cách: `sang_trong`, `tap_chi`, `lang_man`, `de_thuong`, `hien_dai`, `vibe_han`, `ca_tinh` |
+| `--style` | Ép phong cách (xem bảng trên), vd `sang_trong`, `manh_me`, `thu_phap`, `nhan_nen` |
 | `--hook-dur clip1` | Thời gian hiện chữ: `clip1` = hết cảnh đầu (mặc định), hoặc số giây, vd `4` (tối đa vẫn là hết cảnh đầu; chỉ cảnh đầu được tách nền) |
 | `--safe-top 0.08` | Vùng cấm phía trên (tỉ lệ chiều cao) cho tai thỏ / hàng icon Reels |
 | `--text-layer behind` | `behind` (mặc định): chữ sau người mẫu; `auto`: ưu tiên thumbnail đọc trọn chữ; `front`: chữ trước người mẫu |

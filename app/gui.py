@@ -52,6 +52,8 @@ STYLE_AUTO = "Tự động"
 STYLES = {STYLE_AUTO: None, **{p.label: key for key, p in dz.PRESETS.items()}}
 HOOK_DUR = {"Hết cảnh đầu": "clip1", "3 giây": "3", "4 giây": "4", "5 giây": "5"}  # tối đa hết cảnh đầu
 SPEEDS = ["1.0", "1.1", "1.15", "1.2", "1.3"]
+PREVIEW_W = 234  # cỡ ảnh xem trước (9:16) trong cột phải
+PREVIEW_H = round(PREVIEW_W * 16 / 9)
 AUTO_CHECK_MS = 3 * 3600 * 1000  # app để mở lâu: kiểm tra bản mới mỗi 3 tiếng
 # mốc tiến trình (0-1) theo log của hook_merge.py
 STAGES = [("Đo tốc độ nói", 0.05, "Đo tốc độ nói từng clip…"), ("1/3 Ghép clip", 0.15, "Ghép + cắt + tăng tốc…"),
@@ -102,7 +104,7 @@ class App(ctk.CTk):
         ctk.set_appearance_mode("dark")
         super().__init__(fg_color=BG)
         self.title("Video Hook Merger")
-        self.minsize(540, 0)  # cao theo nội dung: mở "Chi tiết" thì cửa sổ tự dài ra
+        self.minsize(820, 0)  # cao theo nội dung: mở "Chi tiết" thì cửa sổ tự dài ra
         self.clips: list[Path] = []
         self.proc: subprocess.Popen | None = None
         self.out_auto = True  # nơi lưu tự đổi theo clip, trừ khi người dùng tự chọn
@@ -111,8 +113,11 @@ class App(ctk.CTk):
         small = dict(height=30, corner_radius=8, font=font(12), fg_color=FIELD, hover_color="#323644",
                      text_color=TEXT)
 
-        wrap = ctk.CTkFrame(self, fg_color=BG)
-        wrap.pack(fill="both", expand=True, padx=20, pady=16)
+        outer = ctk.CTkFrame(self, fg_color=BG)
+        outer.pack(fill="both", expand=True, padx=20, pady=16)
+        wrap = ctk.CTkFrame(outer, fg_color=BG)  # cột trái: điều khiển
+        wrap.pack(side="left", fill="both", expand=True)
+        self._build_preview(outer)  # cột phải: xem trước hook
 
         # ---------- đầu trang ----------
         head = ctk.CTkFrame(wrap, fg_color=BG)
@@ -160,9 +165,10 @@ class App(ctk.CTk):
         # không gắn textvariable: CustomTkinter chỉ hiện chữ gợi ý khi ô nhập không gắn biến
         self.hook = ctk.CTkEntry(wrap, height=42, corner_radius=R, font=font(14), fg_color=CARD,
                                  border_width=0, text_color=TEXT, placeholder_text_color=MUTED,
-                                 placeholder_text="Câu hook  ·  để trống = không có chữ  ·  | chia dòng  ·  "
-                                                  "*chữ* tô màu")
+                                 placeholder_text="Nhập đủ câu hook  ·  | = xuống dòng  ·  *chữ* tô màu  ·  "
+                                                  "trống = không chữ")
         self.hook.pack(fill="x", pady=(10, 0))
+        self.hook.bind("<KeyRelease>", lambda _e: self.schedule_preview())
 
         # ---------- tuỳ chọn ----------
         opt = self._card(wrap)
@@ -179,7 +185,8 @@ class App(ctk.CTk):
                           font=font(12), fg_color=FIELD, button_color=FIELD, button_hover_color="#323644",
                           dropdown_fg_color=FIELD, dynamic_resizing=False).pack(
             side="left", padx=(8, 0), fill="x", expand=True)
-        r2 = ctk.CTkFrame(opt, fg_color=CARD)
+        self.style_var.trace_add("write", lambda *_: self.schedule_preview(50))
+        r2 =ctk.CTkFrame(opt, fg_color=CARD)
         r2.pack(fill="x", pady=(12, 0))
         self.sync = ctk.BooleanVar(value=st.get("sync", True))
         self.trim = ctk.BooleanVar(value=st.get("trim", True))
@@ -251,6 +258,85 @@ class App(ctk.CTk):
         self.refresh()
         if initial:
             self.add_paths([Path(p) for p in initial])
+
+    # ---------- xem trước hook ----------
+    def _build_preview(self, parent) -> None:
+        side = ctk.CTkFrame(parent, fg_color=CARD, corner_radius=R)
+        side.pack(side="right", fill="y", padx=(14, 0))
+        ctk.CTkLabel(side, text="Xem trước", font=font(14, "bold"), text_color=TEXT).pack(
+            anchor="w", padx=14, pady=(12, 0))
+        self.prev_img = ctk.CTkLabel(side, text="", width=PREVIEW_W, height=PREVIEW_H, fg_color=FIELD,
+                                     corner_radius=10, text_color=MUTED, font=font(12))
+        self.prev_img.pack(padx=14, pady=(8, 0))
+        self.prev_note = ctk.CTkLabel(side, text="Cảnh đầu của clip 1", font=font(11), text_color=MUTED,
+                                      wraplength=PREVIEW_W)
+        self.prev_note.pack(padx=14, pady=(6, 12))
+        self._prev_after = None
+        self._prev_lock = threading.Lock()
+        self._prev_busy = False
+        self._prev_pending = None
+        self._prev_cache: dict = {}  # khung hình + vùng người mẫu theo clip
+        self._hm = None
+        self._rvm = None
+        self._rvm_state = "chưa nạp"
+
+    def schedule_preview(self, delay: int = 400) -> None:
+        """Gõ chữ / đổi mẫu / đổi clip: chờ ngừng gõ một chút rồi mới vẽ lại."""
+        if not hasattr(self, "prev_img"):
+            return
+        if self._prev_after:
+            self.after_cancel(self._prev_after)
+        self._prev_after = self.after(delay, self._request_preview)
+
+    def _request_preview(self) -> None:
+        self._prev_after = None
+        job = (self.clips[0] if self.clips else None, self.hook.get(), STYLES.get(self.style_var.get()))
+        with self._prev_lock:
+            if self._prev_busy:  # đang vẽ: chỉ giữ yêu cầu mới nhất
+                self._prev_pending = job
+                return
+            self._prev_busy = True
+        threading.Thread(target=self._preview_worker, args=(job,), daemon=True).start()
+
+    def _preview_worker(self, job) -> None:
+        while job is not None:
+            try:
+                if self._hm is None:
+                    import hook_merge as hm  # nạp lần đầu trong nền (không làm đơ giao diện)
+                    self._hm = hm
+                clip, hook, style = job
+                img = self._hm.preview_image(clip, hook, style, 540, self._rvm, self._prev_cache)
+                self.after(0, self._show_preview, img, None)
+                if clip is not None and self._rvm_state == "chưa nạp":
+                    # lần đầu: hiện ngay bản chưa tách nền, rồi nạp model tách nền (CPU, không chiếm VRAM
+                    # khi đang ghép) để người mẫu đè lên chữ đúng như video thật
+                    self._rvm_state = "đang nạp"
+                    self.after(0, self._show_preview, None, "Đang nạp tách nền để xem chính xác…")
+                    try:
+                        self._rvm = self._hm.load_rvm("cpu")
+                        self._rvm_state = "xong"
+                    except Exception:
+                        self._rvm_state = "lỗi"  # vẫn xem trước được, chỉ không có lớp người mẫu
+                    with self._prev_lock:
+                        if self._prev_pending is None:
+                            self._prev_pending = job
+            except Exception as e:
+                self.after(0, self._show_preview, None, f"Không xem trước được: {e}")
+            with self._prev_lock:
+                job, self._prev_pending = self._prev_pending, None
+                if job is None:
+                    self._prev_busy = False
+
+    def _show_preview(self, img, note: str | None) -> None:
+        if img is not None:
+            self._prev_photo = ctk.CTkImage(light_image=img, dark_image=img, size=(PREVIEW_W, PREVIEW_H))
+            self.prev_img.configure(image=self._prev_photo, text="")
+        if note:
+            self.prev_note.configure(text=note)
+        elif img is not None:
+            lines = [p for p in self.hook.get().split("|") if p.strip()]
+            self.prev_note.configure(text=(f"{len(lines)} dòng · " if lines else "Không có chữ · ")
+                                     + ("Cảnh đầu clip 1" if self.clips else "Chưa có clip"))
 
     # ---------- giao diện ----------
     def _card(self, parent) -> ctk.CTkFrame:
@@ -334,6 +420,7 @@ class App(ctk.CTk):
         for i, c in enumerate(self.clips, 1):
             self.listbox.insert("end", f"{i}.  {c.name}")
         self.count.configure(text=f"{len(self.clips)} clip" if self.clips else "")
+        self.schedule_preview(50)
         if self.clips and self.out_auto:  # lưu ngay trong thư mục chứa clip, không trùng tên file cũ
             folder = self.clips[0].parent
             out, k = folder / f"{folder.name}_hook.mp4", 2

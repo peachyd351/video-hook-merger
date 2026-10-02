@@ -125,7 +125,7 @@ def smoke() -> None:
               "Chạy thử Whisper (đo tốc độ nói)", (res.stderr.strip().splitlines() or ["?"])[-1][:300])
         out = tmp / "out.mp4"
         res = subprocess.run([sys.executable, str(ROOT / "hook_merge.py"), str(clips), "-o", str(out),
-                              "--hook", "Đi tiệc mà chưa biết mặc gì thì xem mẫu này nha"],
+                              "--hook", "Đi tiệc mà chưa biết mặc gì|thì xem *mẫu này* nha"],
                              capture_output=True, text=True, encoding="utf-8", errors="replace")
         ok = res.returncode == 0 and out.exists()
         check(ok, "Chạy thử ghép 3 clip (cắt lặng + tăng tốc + chữ + tách nền)",
